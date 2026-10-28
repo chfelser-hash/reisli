@@ -1,5 +1,5 @@
 // Hauptmodul: Daten laden, Anmeldung, Navigation, Synchronisation
-import { h, s, toast } from './ui.js';
+import { h, s, toast, modal } from './ui.js';
 import { todayStr, rateOf, currencies, fmtRange, daysBetween, dayNumber } from './calc.js';
 import { renderPlan } from './views/plan.js';
 import { renderErfassen } from './views/erfassen.js';
@@ -75,7 +75,21 @@ function defaultTrip() {
 export const trip = () => state.data.trips.find((t) => t.id === state.tripId) || null;
 export const settings = () => state.data.settings;
 export const cat = (id) => settings().categories.find((c) => c.id === id) || { id, name: id || 'Sonstiges', color: '#94a3b8' };
-export const methodName = (id) => (id === 'vorort' ? 'vor Ort (noch offen)' : settings().methods.find((m) => m.id === id)?.name || (id ? id : '— ohne —'));
+export const methodName = (id) => (id === 'vorort' ? 'vor Ort' : settings().methods.find((m) => m.id === id)?.name || (id ? '⚠ gelöschte Methode' : '— noch nicht festgelegt —'));
+/** Methode existiert nicht mehr in den Einstellungen */
+export const isOrphanMethod = (id) => !!id && id !== 'vorort' && !settings().methods.some((m) => m.id === id);
+
+/** Dialog: Methode «from» überall durch eine andere ersetzen. Liefert true, wenn ersetzt. */
+export async function replaceMethodDialog(from, text, methods = settings().methods) {
+  const sel = h('select', null, h('option', { value: '' }, '— ohne Methode —'), methods.filter((m) => m.id !== from).map((m) => h('option', { value: m.id }, m.name)));
+  const r = await modal('Bezahlmethode ersetzen', h('div', { class: 'stack' }, h('p', null, text), h('label', null, 'Ersetzen durch', sel)),
+    [{ label: 'Abbrechen', value: null }, { label: 'Ersetzen', primary: true, value: 'ok' }]);
+  if (r !== 'ok') return false;
+  const res = await api('POST', '/api/methods/replace', { from, to: sel.value });
+  await reload();
+  toast(`${res.count} Einträge umgehängt`);
+  return true;
+}
 export const personName = (id) => trip()?.split?.participants?.find((p) => p.id === id)?.name || '';
 export const tripCurrencies = () => {
   const t = trip();

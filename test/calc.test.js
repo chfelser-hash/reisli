@@ -232,3 +232,18 @@ test('Anzahlung: fester Betrag in Postenwährung, Kursänderung verschiebt den R
   const old = item({ plan: { amount: 27300, currency: 'THB' }, payments: [{ amount: 298.8, currency: 'CHF', chf: 298.8 }] });
   assert.equal(itemCalc(settings, old).floating, true);
 });
+
+test('Offen: Aufschlüsselung vorgängig + vor Ort + Pauschalen, Methodennutzung', async () => {
+  const { openBreakdown, methodUsage } = await import('../public/js/calc.js');
+  const trip = {
+    start: '2027-02-10', end: '2027-02-10', currency: 'THB', days: {},
+    allowances: [{ id: 'e', label: 'Essen', catId: 'essen', amount: 80, currency: 'CHF', mode: 'tag', per: 'tag' }],
+    items: [
+      item({ plan: { amount: 4000, currency: 'THB' }, payWhere: 'vorgaengig', dueMethodId: 'alt' }),
+      item({ plan: { amount: 2000, currency: 'THB' }, payWhere: 'vorort' }),
+      item({ plan: { amount: 10, currency: 'CHF' }, payments: [{ amount: 10, currency: 'CHF', methodId: 'alt' }] }),
+    ],
+  };
+  assert.deepEqual(openBreakdown(settings, trip, '2027-01-01'), { vorgaengig: 100, vorort: 50, allowance: 80, total: 230 });
+  assert.equal(methodUsage([trip], 'alt'), 2);
+});

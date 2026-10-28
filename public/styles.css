@@ -604,3 +604,14 @@ input.short { width: 7rem; flex: none; }
   .pay-grid > button { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; }
   .pay-grid > label:nth-of-type(4) { grid-column: 1 / -1; }
 }
+
+/* Offen: Aufschlüsselung */
+.open-breakdown { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; }
+.ob-part { display: flex; flex-direction: column; text-align: left; padding: .2rem .4rem; border-radius: 8px; }
+button.ob-part:hover { background: var(--line-2); color: inherit; }
+.ob-part .kv { font-size: 1.15rem; }
+.ob-part:last-child .kv { color: var(--accent); }
+.ob-op { font-size: 1.3rem; color: var(--ink-3); font-weight: 700; }
+@media (max-width: 640px) { .ob-op { display: none; } .open-breakdown { display: grid; grid-template-columns: 1fr 1fr; } }
+tr.orphan td:first-child { color: var(--warn); font-weight: 650; }
+tr.orphan .link { margin-left: .4rem; }

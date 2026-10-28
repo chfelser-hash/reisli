@@ -1,7 +1,7 @@
 // Ansicht «Offen»: Zahlungskalender (was ist wann fällig), Bargeld vor Ort, To-dos
 import { h, toast } from '../ui.js';
 import { trip, settings, saveItem, render, methodName, personName } from '../app.js';
-import { dueList, cashPlan, todoList, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
+import { dueList, cashPlan, todoList, openBreakdown, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
 import { editItem, quickPay, catDot } from './item.js';
 import { renderPlan } from './plan.js';
 
@@ -14,7 +14,20 @@ export function renderOffen() {
   if (!t) return renderPlan();
   const todos = todoList(t).filter((x) => !x.todo.done).length;
   const seg = (id, label) => h('button', { class: 'seg' + (tab === id ? ' on' : ''), onclick: () => { tab = id; render(); } }, label);
+  // Gemeinsame Aufschlüsselung – dieselben Zahlen wie «Noch offen» im Plan und in der Auswertung
+  const ob = openBreakdown(settings(), t, todayStr());
+  const part = (label, v, sub, onClick) => h(onClick ? 'button' : 'div', { class: 'ob-part' + (onClick ? ' link-like' : ''), onclick: onClick },
+    h('span', { class: 'kl' }, label), h('span', { class: 'kv' }, 'CHF ' + fmt0(v)), sub ? h('span', { class: 'ks' }, sub) : null);
   const view = h('div', { class: 'view offen' },
+    h('section', { class: 'card open-breakdown' },
+      part('Vorgängig zu zahlen', ob.vorgaengig, 'Zahlungskalender', () => { tab = 'zahlungen'; render(); }),
+      h('span', { class: 'ob-op' }, '+'),
+      part('Vor Ort zu zahlen', ob.vorort, 'Posten', () => { tab = 'bargeld'; render(); }),
+      h('span', { class: 'ob-op' }, '+'),
+      part('Pauschalen', ob.allowance, 'Schätzung', () => { tab = 'bargeld'; render(); }),
+      h('span', { class: 'ob-op' }, '='),
+      part('Noch offen total', ob.total, 'wie im Plan')
+    ),
     h('div', { class: 'toolbar' }, h('div', { class: 'segs' }, seg('zahlungen', 'Zahlungen'), seg('bargeld', 'Vor Ort / Bargeld'), seg('todos', todos ? `To-dos (${todos})` : 'To-dos')))
   );
   if (tab === 'zahlungen') view.append(...payments(t));

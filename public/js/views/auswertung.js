@@ -1,7 +1,7 @@
 // Ansicht «Auswertung»: Kategorien, Kosten pro Tag (Plan vs. Ist), Orte, Bezahlmethoden, Aufteilung, Export
 import { h, s } from '../ui.js';
-import { trip, settings, cat, methodName, download, go } from '../app.js';
-import { tripSummary, byMethod, settlement, tripDates, dayNumber, fmt, fmt0, fmtDay, todayStr, isStay, nights } from '../calc.js';
+import { state, trip, settings, cat, methodName, isOrphanMethod, replaceMethodDialog, render, download, go } from '../app.js';
+import { tripSummary, byMethod, openBreakdown, methodUsage, settlement, tripDates, dayNumber, fmt, fmt0, fmtDay, todayStr, isStay, nights } from '../calc.js';
 import { renderPlan } from './plan.js';
 
 export function renderAuswertung() {
@@ -49,24 +49,28 @@ function methods(t, sum) {
   const rows = byMethod(S, t).sort((a, b) => b.paid + b.planned - (a.paid + a.planned));
   const paid = rows.reduce((a, r) => a + r.paid, 0);
   const planned = rows.reduce((a, r) => a + r.planned, 0);
+  const ob = openBreakdown(S, t, todayStr());
   return h('section', { class: 'card' },
     h('div', { class: 'card-head' }, h('h2', null, 'Abrechnung nach Bezahlmethode')),
     h('table', { class: 'simple' },
       h('thead', null, h('tr', null, h('th', null, 'Methode'), h('th', { class: 'num' }, 'bezahlt'), h('th', { class: 'num' }, 'noch offen'), h('th', { class: 'num' }, 'Total'))),
-      h('tbody', null, rows.map((r) => h('tr', null,
-        h('td', null, methodName(r.methodId)),
+      h('tbody', null, rows.map((r) => h('tr', { class: isOrphanMethod(r.methodId) ? 'orphan' : '' },
+        h('td', null, methodName(r.methodId), isOrphanMethod(r.methodId)
+          ? h('button', { class: 'link small', onclick: async () => { if (await replaceMethodDialog(r.methodId, `Diese Einträge verweisen auf eine gelöschte Bezahlmethode (${methodUsage(state.data.trips, r.methodId)}×). Welcher Methode sollen sie zugeordnet werden?`)) render(); } }, 'zuordnen …')
+          : null),
         h('td', { class: 'num' }, r.paid ? fmt(r.paid) : '–'),
         h('td', { class: 'num muted' }, r.planned ? fmt(r.planned) : '–'),
         h('td', { class: 'num strong' }, fmt(r.paid + r.planned))
       ))),
       h('tfoot', null,
         h('tr', null, h('th', null, 'Posten'), h('td', { class: 'num' }, fmt(paid)), h('td', { class: 'num' }, fmt(planned)), h('td', { class: 'num' }, fmt(paid + planned))),
+        h('tr', { class: 'sub' }, h('th', { colspan: 4, class: 'muted small' }, `davon offen: vorgängig ${fmt(ob.vorgaengig)} + vor Ort ${fmt(ob.vorort)}`)),
         sum.allowance ? h('tr', { class: 'sub' }, h('th', null, 'Pauschalen'), h('td'), h('td', { class: 'num' }, fmt(sum.allowance)), h('td', { class: 'num' }, fmt(sum.allowance))) : null,
         h('tr', null, h('th', null, 'Prognose total'), h('td'), h('td'), h('td', { class: 'num' }, fmt(sum.forecast))),
         h('tr', { class: 'sub' }, h('th', null, `Pro Person (${sum.travelers})`), h('td'), h('td'), h('td', { class: 'num' }, fmt(sum.perPerson)))
       )
     ),
-    h('p', { class: 'hint' }, '«noch offen» ist der Betrag, der mit dieser Methode bezahlt werden soll (beim Posten unter «Wird bezahlt mit»). Ohne Angabe erscheint er unter «— ohne —» bzw. «vor Ort».')
+    h('p', { class: 'hint' }, '«noch offen» = was mit dieser Methode noch bezahlt werden soll (beim Posten unter «Wird bezahlt mit»). Ohne Angabe: «— noch nicht festgelegt —» (vorgängig) bzw. «vor Ort».')
   );
 }
 

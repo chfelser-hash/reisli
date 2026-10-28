@@ -383,6 +383,22 @@ async function api(req, res, url) {
     const settings = store.mutate((d) => (d.settings = cleanSettings(b, d.settings)));
     return send(res, 200, { rev: store.rev, settings });
   }
+  if (p === '/api/methods/replace' && method === 'POST') {
+    // Bezahlmethode überall ersetzen (z.B. vor dem Löschen oder für verwaiste Einträge); to '' = ohne Methode
+    const b = await readBody(req);
+    const from = str(b.from, 40);
+    const to = str(b.to, 40);
+    if (!from) throw httpError(400, 'Methode fehlt');
+    const count = store.mutate((d) => {
+      let n = 0;
+      for (const t of d.trips) for (const it of t.items) {
+        if (it.dueMethodId === from) { it.dueMethodId = to; n++; }
+        for (const pay of it.payments) if (pay.methodId === from) { pay.methodId = to; n++; }
+      }
+      return n;
+    });
+    return send(res, 200, { rev: store.rev, count });
+  }
   if (p === '/api/rates/refresh' && method === 'POST') {
     try {
       const result = await refreshRates(true);

@@ -451,6 +451,33 @@ export function byMethod(settings, trip) {
   return out;
 }
 
+/** Wie oft eine Bezahlmethode verwendet wird (Zahlungen und «Wird bezahlt mit»), über alle Reisen */
+export function methodUsage(trips, methodId) {
+  let n = 0;
+  for (const t of trips || []) for (const it of t.items || []) {
+    if (it.dueMethodId === methodId) n++;
+    for (const p of it.payments || []) if (p.methodId === methodId) n++;
+  }
+  return n;
+}
+
+/**
+ * Was noch offen ist, aufgeschlüsselt (alles in CHF) – dieselben Zahlen wie Plan, Offen und Auswertung:
+ * vorgängig (Zahlungskalender) + vor Ort (Posten) + Pauschalen = total
+ */
+export function openBreakdown(settings, trip, today = todayStr()) {
+  let vorgaengig = 0, vorort = 0;
+  for (const it of trip.items || []) {
+    const c = itemCalc(settings, it);
+    if (c.openCHF <= 0) continue;
+    if (it.payWhere === 'vorort') vorort += c.openCHF;
+    else vorgaengig += c.openCHF;
+  }
+  let allowance = 0;
+  for (const list of allowanceMap(settings, trip, today).values()) for (const x of list) allowance += x.extraCHF;
+  return { vorgaengig: round2(vorgaengig), vorort: round2(vorort), allowance: round2(allowance), total: round2(vorgaengig + vorort + allowance) };
+}
+
 // ---------- Kostenaufteilung ----------
 
 /** Anteile eines Postens pro Teilnehmer (Summe = 1). Ohne Angabe: gleichmässig auf alle. */
