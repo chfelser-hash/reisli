@@ -788,3 +788,26 @@ a.contact { color: var(--accent); }
 .calc-row { display: flex; justify-content: space-between; gap: .5rem; background: none; border: 0; border-top: 1px solid var(--line-2); padding: .35rem .1rem; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 .calc-row:hover { color: var(--accent); }
 @media (max-width: 420px) { .calc-table { grid-template-columns: 1fr; } }
+
+/* ---------- Packliste ---------- */
+.pack-filter { margin-top: .6rem; }
+.pack-group + .pack-group { margin-top: .9rem; }
+.pack-group h3 { margin: 0 0 .2rem; font-size: .95rem; }
+.pack-list { list-style: none; margin: 0; padding: 0; }
+.pack-row { display: flex; align-items: center; gap: .5rem; padding: .3rem 0; border-top: 1px solid var(--line-2); }
+.pack-row .check { flex: 1; min-width: 0; }
+.pack-row.done .pk-text { text-decoration: line-through; color: var(--ink-3); }
+.pack-add { display: grid; grid-template-columns: minmax(0, 1fr) 9rem 8rem auto; gap: .4rem; margin-top: 1rem; }
+@media (max-width: 560px) { .pack-add { grid-template-columns: 1fr 1fr auto; } .pack-add > input:first-child { grid-column: 1 / -1; } }
+.pack-hint { display: grid; grid-template-columns: auto 1fr auto; gap: .8rem; align-items: center; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.ph-icon { font-size: 1.6rem; }
+.tpl-list { list-style: none; margin: .3rem 0 .6rem; padding: 0; }
+.tpl-list li { display: flex; justify-content: space-between; gap: .5rem; padding: .35rem 0; border-top: 1px solid var(--line-2); }
+.tpl-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88rem; width: 100%; }
+/* Schmale Handys: Kopfzeile mit Offline-Anzeige und Rechner muss neben die Reise-Auswahl passen */
+@media (max-width: 640px) {
+  .topbar { gap: .5rem; }
+  .brand > span { display: none; }
+  .net-badge { padding: .2rem .5rem; font-size: .72rem; }
+  .trip-btn { min-width: 0; }
+}

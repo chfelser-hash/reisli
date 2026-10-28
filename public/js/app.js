@@ -93,6 +93,11 @@ function offlineOp(method, url) {
   if (m && method === 'DELETE') return { kind: 'item-del', tripId: m[1], itemId: m[2] };
   m = url.match(/^\/api\/trips\/([\w-]+)\/repayments$/);
   if (m && method === 'POST') return { kind: 'rep-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/packing$/);
+  if (m && method === 'POST') return { kind: 'pack-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/packing\/([\w-]+)$/);
+  if (m && method === 'PUT') return { kind: 'pack-put', tripId: m[1], packId: m[2] };
+  if (m && method === 'DELETE') return { kind: 'pack-del', tripId: m[1], packId: m[2] };
   m = url.match(/^\/api\/trips\/([\w-]+)\/cash$/);
   if (m && method === 'POST') return { kind: 'cash-new', tripId: m[1] };
   m = url.match(/^\/api\/trips\/([\w-]+)\/cash\/([\w-]+)$/);
@@ -104,6 +109,7 @@ function offlineOp(method, url) {
 
 export async function api(method, url, body, opts = {}) {
   const op = method === 'GET' ? null : offlineOp(method, url);
+  if (op?.kind === 'pack-new') body = Array.isArray(body) ? body.map((x) => ({ ...x, id: x.id || newId() })) : { ...body, id: body.id || newId() };
   if (op?.kind === 'item-new') body = Array.isArray(body) ? body.map((x) => ({ ...x, id: x.id || newId() })) : { ...body, id: body.id || newId() };
   if (op?.kind === 'rep-new' || op?.kind === 'cash-new') body = { ...body, id: body.id || newId() };
   // Liegt noch etwas in der Warteschlange, hinten anstellen – sonst stimmt die Reihenfolge nicht mehr
@@ -166,6 +172,26 @@ function enqueue(method, url, body, op) {
   } else if (op.kind === 'rep-new') {
     ob.push(entry);
     res = { repayment: { ...body, by, createdAt: now } };
+  } else if (op.kind === 'pack-new') {
+    ob.push(entry);
+    res = { created: listOf(body) };
+  } else if (op.kind === 'pack-put') {
+    // Neuer, noch nicht gesendeter Eintrag: dort ändern; sonst nur der letzte Stand zählt
+    const pendingNew = ob.find((o) => o.kind === 'pack-new' && listOf(o.body).some((x) => x.id === op.packId));
+    const pendingPut = ob.find((o) => o.kind === 'pack-put' && o.packId === op.packId);
+    if (pendingNew) pendingNew.body = listOf(pendingNew.body).map((x) => (x.id === op.packId ? { ...x, ...body } : x));
+    else if (pendingPut) pendingPut.body = { ...pendingPut.body, ...body };
+    else ob.push(entry);
+    const cur = t?.packing?.find((x) => x.id === op.packId);
+    res = { item: { ...cur, ...body } };
+  } else if (op.kind === 'pack-del') {
+    const pendingNew = ob.find((o) => o.kind === 'pack-new' && listOf(o.body).some((x) => x.id === op.packId));
+    state.outbox = ob.filter((o) => !(o.kind === 'pack-put' && o.packId === op.packId));
+    if (pendingNew) {
+      const rest = listOf(pendingNew.body).filter((x) => x.id !== op.packId);
+      if (rest.length) pendingNew.body = rest;
+      else state.outbox = state.outbox.filter((o) => o !== pendingNew);
+    } else state.outbox.push(entry);
   } else if (op.kind === 'cash-new') {
     ob.push(entry);
     res = { entry: { ...body, by, createdAt: now } };

@@ -4,10 +4,11 @@ import { h, toast, confirmDialog } from '../ui.js';
 import { state, api, reload, render, settings, selectTrip, download, refreshRates, replaceMethodDialog, clearLocal } from '../app.js';
 import { fmt0, fmtCur, fmtDate, methodUsage, isCashMethod } from '../calc.js';
 import { card, uid, saveSettings } from './shared.js';
+import { templatesCard } from './packliste.js';
 
 export function renderMehr() {
   const view = h('div', { class: 'view mehr' },
-    h('div', { class: 'settings-grid' }, methodsCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
+    h('div', { class: 'settings-grid' }, methodsCard(), templatesCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
     h('div', { class: 'row gap wrap' },
       h('button', { class: 'btn ghost', onclick: async () => {
         if (state.outbox.length && !(await confirmDialog('Abmelden', `${state.outbox.length} offline erfasste Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Trotzdem abmelden?`, 'Abmelden', true))) return;

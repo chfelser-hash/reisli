@@ -11,6 +11,10 @@ Läuft im Browser auf Windows und Android (installierbar als App), die Daten lie
   - **Zahlungskalender** – was ist wann fällig und von welchem Konto, mit «✓ bezahlt»-Knopf.
   - **Vor Ort / Bargeld** – was noch vor Ort zu bezahlen ist, pro Währung und Station (aufklappbar, «Alle aufklappen»), fixe Beträge und Pauschalen getrennt, CHF-Wert jeweils daneben. Alle Beträge – Posten und Pauschalen – stehen in der **Währung vor Ort** des Tages (Standard: Reisewährung, pro Tag oder für einen Bereich über ✎ beim Tag einstellbar, z.B. Reisetage in der Schweiz auf CHF); anders erfasste Posten werden umgerechnet («erfasst: 50 CHF»).
   - **To-dos** – pro Posten (z.B. «Passdaten schicken»), mit Fälligkeit.
+  - **Packliste** – aus Vorlagen (unter «Mehr»: Standard, Tauchreise, CCR … – «*» am Zeilenende = pro Person), abhaken pro Person, auch offline; «Alle zurücksetzen» für die Rückreise.
+- **Bargeld-Kasse** (unter «Heute» und «Offen → Vor Ort / Bargeld») – Bezüge am Bancomat mit belastetem CHF-Betrag erfassen; bar bezahlte Ausgaben (Bezahlmethode mit Häkchen «Bargeld») ziehen sich ab. Zeigt Bestand im Portemonnaie, effektiven Kurs inkl. Gebühren und wie viel bis Reiseende noch zu beziehen ist. Kassensturz mit Differenz als Ausgabe oder Korrektur.
+- **⇄ Umrechnen** (Kopfzeile) – Schnellrechner Lokalwährung ⇄ CHF mit Spickzettel, auch offline; wahlweise zum Bezugskurs.
+- **Dokumente** – Pässe, Krankenkasse, Versicherungen, Tauchbrevets … für alle Reisen, nach Kategorie und Person gruppiert, mit Gültigkeitswarnung; offline speicherbar.
 - **Auswertung** – nach Kategorie, Kosten pro Tag, Tagesbudget Plan vs. Ist, nach Ort (pro Nacht), Abrechnung nach Bezahlmethode, Kostenaufteilung, Export (CSV, Druck).
 - **Mehr** – nur Allgemeines: Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
 

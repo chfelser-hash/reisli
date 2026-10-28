@@ -1,12 +1,18 @@
 // Ansicht «Offen»: Zahlungskalender (was ist wann fällig), Bargeld vor Ort, To-dos
 import { h, toast, modal } from '../ui.js';
-import { state, api, trip, settings, saveItem, render, methodName, personName } from '../app.js';
+import { state, api, trip, settings, saveItem, render, methodName, personName, go } from '../app.js';
+import { renderPacking, packStats } from './packliste.js';
 import { walletCard } from './kasse.js';
 import { dueList, cashPlan, todoList, openBreakdown, paymentsCsv, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
 import { editItem, quickPay, catDot } from './item.js';
 import { renderPlan } from './plan.js';
 
 let tab = 'zahlungen';
+/** Von aussen (z.B. «Heute») direkt einen Abschnitt öffnen */
+export function openOffen(which) {
+  tab = which;
+  go('offen');
+}
 let withAllowances = true;
 let fromToday = true;
 
@@ -29,10 +35,12 @@ export function renderOffen() {
       h('span', { class: 'ob-op' }, '='),
       part('Noch offen total', ob.total, 'wie im Plan')
     ),
-    h('div', { class: 'toolbar' }, h('div', { class: 'segs' }, seg('zahlungen', 'Zahlungen'), seg('bargeld', 'Vor Ort / Bargeld'), seg('todos', todos ? `To-dos (${todos})` : 'To-dos')))
+    h('div', { class: 'toolbar' }, h('div', { class: 'segs' }, seg('zahlungen', 'Zahlungen'), seg('bargeld', 'Vor Ort / Bargeld'), seg('todos', todos ? `To-dos (${todos})` : 'To-dos'),
+      seg('packliste', packStats(t).open ? `Packliste (${packStats(t).open})` : 'Packliste')))
   );
   if (tab === 'zahlungen') view.append(...payments(t));
   else if (tab === 'bargeld') view.append(...cash(t));
+  else if (tab === 'packliste') view.append(...renderPacking(t));
   else view.append(todosView(t));
   return view;
 }

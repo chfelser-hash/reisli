@@ -135,6 +135,7 @@ export function migrateTrip(t) {
   t.split.participants = Array.isArray(t.split.participants) ? t.split.participants : [];
   t.repayments = Array.isArray(t.repayments) ? t.repayments : [];
   t.cash = Array.isArray(t.cash) ? t.cash : [];
+  t.packing = Array.isArray(t.packing) ? t.packing : [];
   t.travelers = Number(t.travelers) || 2;
   t.currency = t.currency || 'CHF';
   for (const it of t.items) {

@@ -134,6 +134,13 @@ export function cleanCash(c) {
   };
 }
 
+/** Eintrag der Packliste einer Reise */
+export function cleanPackItem(x) {
+  const text = str(x.text, 120).trim();
+  if (!text) throw httpError(400, 'Text fehlt');
+  return { id: id(x.id), text, group: str(x.group, 40).trim(), who: str(x.who, 40).trim(), done: !!x.done };
+}
+
 export function cleanDay(input) {
   return {
     title: str(input.title, 200),
@@ -160,7 +167,11 @@ export function cleanTrip(input, user) {
   for (const c of Array.isArray(input.cash) ? input.cash.slice(0, 1000) : []) {
     try { cash.push(cleanCash(c)); } catch { /* ungültige überspringen */ }
   }
-  return migrateTrip({ id: id(input.id), ...meta, days, items, repayments, cash, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
+  const packing = [];
+  for (const x of Array.isArray(input.packing) ? input.packing.slice(0, 1000) : []) {
+    try { packing.push(cleanPackItem(x)); } catch { /* leere überspringen */ }
+  }
+  return migrateTrip({ id: id(input.id), ...meta, days, items, repayments, cash, packing, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
 }
 
 export function cleanSettings(b, current) {
@@ -172,6 +183,14 @@ export function cleanSettings(b, current) {
   if (Array.isArray(b.categories)) {
     out.categories = b.categories.slice(0, 40).map((c) => ({ id: id(c.id), name: str(c.name, 60).trim(), color: color(c.color) })).filter((c) => c.name);
     if (!out.categories.length) throw httpError(400, 'Mindestens eine Kategorie nötig');
+  }
+  if (Array.isArray(b.packTemplates)) {
+    // Packlisten-Vorlagen: Gegenstände mit Gruppe; perPerson = wird für jede Person einzeln angelegt
+    out.packTemplates = b.packTemplates.slice(0, 30).map((tpl) => ({
+      id: id(tpl.id),
+      name: str(tpl.name, 60).trim() || 'Vorlage',
+      items: (Array.isArray(tpl.items) ? tpl.items : []).slice(0, 300).map((x) => ({ text: str(x.text, 120).trim(), group: str(x.group, 40).trim(), perPerson: !!x.perPerson })).filter((x) => x.text),
+    }));
   }
   if (b.rates && typeof b.rates === 'object') {
     out.rates = {};

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, newId, migrateTrip } from './store.js';
 import { Auth, httpError } from './auth.js';
-import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, cleanDocument, cleanCash, isDate, str } from './clean.js';
+import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, cleanDocument, cleanCash, cleanPackItem, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
@@ -319,6 +319,45 @@ async function api(req, res, url) {
   }
 
   // ----- Rückzahlungen (Kostenaufteilung) -----
+  // ----- Packliste (einzeln änderbar, damit Abhaken auch offline und auf zwei Handys klappt) -----
+  m = p.match(/^\/api\/trips\/([\w-]+)\/packing$/);
+  if (m && method === 'POST') {
+    const b = await readBody(req);
+    const list = (Array.isArray(b) ? b : [b]).slice(0, 500);
+    const created = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      const out = [];
+      for (const x of list) {
+        const c = cleanPackItem(x);
+        const dup = t.packing.find((y) => y.id === c.id);
+        if (dup) { out.push(dup); continue; }
+        t.packing.push(c);
+        out.push(c);
+      }
+      return out;
+    });
+    return send(res, 200, { rev: store.rev, created });
+  }
+  m = p.match(/^\/api\/trips\/([\w-]+)\/packing\/([\w-]+)$/);
+  if (m && method === 'PUT') {
+    const b = await readBody(req);
+    const item = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      const i = t.packing.findIndex((x) => x.id === m[2]);
+      if (i < 0) return null; // inzwischen gelöscht – nicht schlimm
+      t.packing[i] = cleanPackItem({ ...t.packing[i], ...b, id: m[2] });
+      return t.packing[i];
+    });
+    return send(res, 200, { rev: store.rev, item });
+  }
+  if (m && method === 'DELETE') {
+    store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      t.packing = t.packing.filter((x) => x.id !== m[2]);
+    });
+    return send(res, 200, { rev: store.rev });
+  }
+
   // ----- Bargeld-Kasse -----
   m = p.match(/^\/api\/trips\/([\w-]+)\/cash$/);
   if (m && method === 'POST') {

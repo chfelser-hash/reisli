@@ -9,6 +9,8 @@ import {
 } from '../calc.js';
 import { editItem, catDot } from './item.js';
 import { walletCard } from './kasse.js';
+import { packStats } from './packliste.js';
+import { openOffen } from './offen.js';
 import { documentFiles, docsCompact, cacheFiles, countCached, cachedText } from './dokumente.js';
 
 
@@ -51,6 +53,15 @@ export function renderHeute() {
     day.note ? h('p', { class: 'day-note' }, day.note) : null,
     h('button', { class: 'btn primary big block', onclick: () => go('erfassen') }, '+ Ausgabe erfassen')
   ));
+
+  // Vor der Abreise und am ersten Tag: Packliste
+  const ps = packStats(t);
+  if (today <= t.start && (ps.open || !ps.total)) {
+    view.append(h('button', { class: 'card pack-hint', onclick: () => openOffen('packliste') },
+      h('span', { class: 'ph-icon', 'aria-hidden': 'true' }, '🧳'),
+      h('span', null, h('strong', null, 'Packliste'), h('br'), h('span', { class: 'muted small' }, ps.total ? `${ps.open} von ${ps.total} noch nicht gepackt` : 'Noch keine Packliste – aus Vorlagen anlegen')),
+      h('span', { class: 'muted' }, '›')));
+  }
 
   // ----- Unterkunft -----
   const stay = stayFor(t, date);
@@ -238,6 +249,11 @@ const opLabel = (o) => {
     case 'item-put': return `Geändert: ${o.body.title || title(o.itemId)}`;
     case 'item-del': return `Gelöscht: ${title(o.itemId)}`;
     case 'rep-new': return `Rückzahlung CHF ${fmt(o.body.amount)}`;
+    case 'cash-new': return `Bargeld: ${o.body.kind === 'korrektur' ? 'Korrektur' : 'Bezug'} ${fmtCur(Math.abs(o.body.amount), o.body.currency)}`;
+    case 'cash-del': return 'Bargeld-Eintrag gelöscht';
+    case 'pack-new': return `Packliste: ${(Array.isArray(o.body) ? o.body : [o.body]).length} Einträge neu`;
+    case 'pack-put': return `Packliste: ${o.body.text || 'Eintrag'} ${o.body.done === true ? '✓' : o.body.done === false ? 'offen' : 'geändert'}`;
+    case 'pack-del': return 'Packliste: Eintrag gelöscht';
     case 'rep-del': return 'Rückzahlung gelöscht';
     default: return o.kind;
   }
