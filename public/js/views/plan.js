@@ -117,7 +117,7 @@ function dayCard(t, sum, d, today) {
         h('strong', null, fmtDay(d)),
         day.title ? h('span', null, day.title) : null,
         place ? h('span', { class: 'place' }, place) : null,
-        dayCurrency(t, d) !== t.currency ? h('span', { class: 'cur-tag', title: 'Währung vor Ort für Pauschalen' }, dayCurrency(t, d)) : null
+        dayCurrency(t, d) !== t.currency ? h('span', { class: 'cur-tag', title: 'Währung vor Ort' }, dayCurrency(t, d)) : null
       ),
       h('span', { class: 'day-sum' }, dayTotal ? 'CHF ' + fmt0(dayTotal) : ''),
       h('button', { class: 'icon-btn sm', 'aria-label': 'Tag bearbeiten', title: 'Programm, Ort, Pauschalen', onclick: () => editDay(t, d) }, '✎')
@@ -166,8 +166,12 @@ function itemRow(it) {
 
 function amountCell(it, c) {
   const cur = it.plan?.currency || 'CHF';
-  if (cur === 'CHF' || !it.plan.amount) return h('span', null, fmt(c.totalCHF));
-  return h('span', { class: 'two' }, h('span', null, fmtCur(it.plan.amount, cur)), h('small', null, 'CHF ' + fmt(c.totalCHF)));
+  // Angezahlt: zusätzlich den offenen Rest zeigen (in der Währung des Postens, CHF dahinter)
+  const rest = c.status === 'angezahlt' && c.open > 0
+    ? [h('small', { class: 'rest' }, `Rest ${fmtCur(c.open, cur)}`), cur !== 'CHF' ? h('small', { class: 'rest' }, `≈ CHF ${fmt(c.openCHF)}`) : null]
+    : null;
+  if (cur === 'CHF' || !it.plan.amount) return h('span', { class: 'two' }, h('span', null, fmt(c.totalCHF)), rest);
+  return h('span', { class: 'two' }, h('span', null, fmtCur(it.plan.amount, cur)), h('small', null, 'CHF ' + fmt(c.totalCHF)), rest);
 }
 
 function allowanceRow(x, d, today) {
@@ -194,18 +198,18 @@ async function editDay(t, d) {
   const range = { to: d };
   const rangeTo = h('input', { type: 'date', value: d, min: d, max: t.end, onchange: (e) => (range.to = e.target.value) });
   const curBox = h('div', { class: 'span2 day-cur' },
-    h('label', null, 'Währung vor Ort (für Pauschalen)',
+    h('label', null, 'Währung vor Ort',
       h('select', { onchange: (e) => (day.currency = e.target.value) },
         h('option', { value: '', selected: !day.currency }, `Reisewährung (${t.currency})`),
         tripCurrencies().filter((c) => c !== t.currency).map((c) => h('option', { value: c, selected: c === day.currency }, c)))),
     h('label', null, 'Gilt bis und mit', rangeTo),
-    h('p', { class: 'hint' }, 'Z.B. Abreise- und Ankunftstag in der Schweiz auf CHF stellen. «Gilt bis und mit» überträgt die Währung auf alle Tage bis dahin.')
+    h('p', { class: 'hint' }, 'Gilt für alles, was an diesem Tag vor Ort bezahlt wird (Posten und Pauschalen) – z.B. Reisetage in der Schweiz auf CHF stellen. «Gilt bis und mit» überträgt die Währung auf alle Tage bis dahin.')
   );
   const content = h('div', { class: 'form-grid' },
     h('label', { class: 'span2' }, 'Programm', h('input', { value: day.title, placeholder: 'z.B. Transfer nach Khao Lak', oninput: (e) => (day.title = e.target.value) })),
     h('label', null, 'Ort', h('input', { value: day.place, placeholder: 'z.B. Bangkok', oninput: (e) => (day.place = e.target.value) })),
     h('label', { class: 'span2' }, 'Notiz', h('textarea', { rows: 2, oninput: (e) => (day.note = e.target.value) }, day.note)),
-    applicable.length ? curBox : null,
+    curBox,
     applicable.length ? h('div', { class: 'span2' },
       h('span', { class: 'label' }, 'Pauschalen an diesem Tag'),
       applicable.map((a) => h('label', { class: 'check' },

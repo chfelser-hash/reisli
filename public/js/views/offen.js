@@ -86,7 +86,7 @@ function cash(t) {
   const from = fromToday && today > t.start ? today : '';
   const groups = cashPlan(S, t, { withAllowances, from, today });
   const opts = h('section', { class: 'card' },
-    h('p', { class: 'muted' }, 'Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst. Posten stehen in der Währung, in der sie erfasst sind; Pauschalen in der «Währung vor Ort» des jeweiligen Tages (einstellbar im Plan über ✎ beim Tag). Der CHF-Wert steht jeweils klein daneben.'),
+    h('p', { class: 'muted' }, 'Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst. Alle Beträge stehen in der «Währung vor Ort» des jeweiligen Tages (Standard: Reisewährung, einstellbar im Plan über ✎ beim Tag); anders erfasste Posten werden umgerechnet. Der CHF-Wert steht jeweils klein daneben.'),
     h('div', { class: 'row gap wrap' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: withAllowances, onchange: (e) => { withAllowances = e.target.checked; render(); } }), 'Pauschalen einrechnen'),
       h('span', { class: 'spacer' }),

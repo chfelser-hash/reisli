@@ -284,7 +284,7 @@ details summary { cursor: pointer; }
 .items { list-style: none; margin: .4rem 0 0; padding: 0; }
 .items > li { border-top: 1px solid var(--line-2); }
 .item {
-  width: 100%; display: grid; grid-template-columns: 2.9rem 1fr auto 6.5rem; gap: .2rem .6rem; align-items: center;
+  width: 100%; display: grid; grid-template-columns: 2.9rem 1fr auto 9.5rem; gap: .2rem .6rem; align-items: center;
   border: 0; background: none; text-align: left; padding: .5rem .1rem; cursor: pointer; font: inherit; color: inherit;
 }
 button.item:hover { background: var(--line-2); }
@@ -579,3 +579,6 @@ input.short { width: 7rem; flex: none; }
 .day-cur { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; padding: .6rem; background: var(--bg); border-radius: 10px; }
 .day-cur .hint { grid-column: 1 / -1; margin: 0; }
 @media (max-width: 520px) { .day-cur { grid-template-columns: 1fr; } }
+
+.two small.rest { color: #1c5cab; font-weight: 650; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .two small.rest { color: #86b6ef; } }

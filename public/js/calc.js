@@ -347,10 +347,9 @@ export function dueList(settings, trip) {
  * und Ort. Optional inkl. Pauschalen (in der Hauptwährung der Reise).
  */
 export function cashPlan(settings, trip, { withAllowances = false, from = '', today = todayStr() } = {}) {
-  // Posten erscheinen in der Währung, in der sie erfasst sind – so wird bezahlt (z.B. Transfer zu Hause in CHF).
-  // Pauschalen sind Schätzungen für Ausgaben vor Ort und werden in die «Währung vor Ort» des Tages umgerechnet
-  // (pro Tag einstellbar, Standard: Reisewährung).
-  // Jede Zeile führt zusätzlich ihren CHF-Wert mit.
+  // Alles erscheint in der «Währung vor Ort» des jeweiligen Tages (pro Tag einstellbar, Standard: Reisewährung),
+  // z.B. Reisetage in der Schweiz auf CHF. Posten in anderer Währung werden umgerechnet, der erfasste Betrag
+  // bleibt als origAmount/origCurrency erhalten. Jede Zeile führt zusätzlich ihren CHF-Wert mit.
   const groups = new Map(); // currency → {currency, total, rows:[{date, place, title, amount, chf, origAmount, origCurrency}]}
   const push = (cur, row) => {
     if (!groups.has(cur)) groups.set(cur, { currency: cur, total: 0, chf: 0, rows: [] });
@@ -364,7 +363,12 @@ export function cashPlan(settings, trip, { withAllowances = false, from = '', to
     if (from && it.date < from) continue;
     const c = itemCalc(settings, it);
     if (c.open <= 0) continue;
-    push(it.plan.currency || 'CHF', { date: it.date, place: placeFor(trip, it, it.date), title: it.title, itemId: it.id, amount: c.open, chf: c.openCHF });
+    // In der Währung vor Ort des Tages; weicht der Posten davon ab, wird umgerechnet (Original bleibt sichtbar)
+    const cur = it.plan.currency || 'CHF';
+    const dc = dayCurrency(trip, it.date);
+    const base = { date: it.date, place: placeFor(trip, it, it.date), title: it.title, itemId: it.id, chf: c.openCHF };
+    if (cur === dc || c.rateMissing || !Number.isFinite(rateOf(settings, dc))) push(cur, { ...base, amount: c.open });
+    else push(dc, { ...base, amount: dc === 'CHF' ? round2(c.openCHF) : Math.round(fromCHF(settings, c.openCHF, dc)), origAmount: c.open, origCurrency: cur });
   }
   if (withAllowances) {
     for (const [d, list] of allowanceMap(settings, trip, today)) {

@@ -175,23 +175,29 @@ test('Zusammenführen: Anzahlung in CHF + Rest in THB', async () => {
   assert.equal(fmtRange('2026-12-28', '2027-01-05'), '28.12.2026–05.01.2027');
 });
 
-test('Bargeld: Posten in ihrer Währung, Pauschalen in Reisewährung, CHF-Wert je Zeile', async () => {
+test('Bargeld: Posten in der Währung vor Ort des Tages, Original bleibt sichtbar', async () => {
   const { cashPlan } = await import('../public/js/calc.js');
   const trip = {
-    start: '2027-02-10', end: '2027-02-11', currency: 'THB', days: { '2027-02-10': { place: 'Boot' } },
+    start: '2027-02-10', end: '2027-02-11', currency: 'THB',
+    days: { '2027-02-10': { place: 'Boot' }, '2027-02-11': { place: 'Zuhause', currency: 'CHF' } },
     allowances: [{ id: 'e', label: 'Essen', catId: 'essen', amount: 80, currency: 'CHF', mode: 'tag', per: 'tag' }],
     items: [
       item({ date: '2027-02-11', title: 'Transfer nach Hause', plan: { amount: 50, currency: 'CHF' }, payWhere: 'vorort' }),
+      item({ date: '2027-02-10', title: 'Trinken an Board', plan: { amount: 16, currency: 'CHF' }, payWhere: 'vorort' }),
       item({ date: '2027-02-10', title: 'NP Gebühr', plan: { amount: 5000, currency: 'THB' }, payWhere: 'vorort' }),
     ],
   };
   const g = cashPlan(settings, trip, { withAllowances: true, today: '2027-01-01' });
-  assert.deepEqual(g.map((x) => x.currency), ['THB', 'CHF']);
-  assert.equal(g[0].fixed, 5000);
-  assert.equal(g[0].allowance, 6400);
-  assert.equal(g[0].chf, 125 + 160);
-  assert.equal(g[1].total, 50);
-  assert.equal(g[1].rows[0].chf, 50);
+  const by = Object.fromEntries(g.map((x) => [x.currency, x]));
+  const drinks = by.THB.rows.find((r) => r.title === 'Trinken an Board');
+  assert.equal(drinks.amount, 640);
+  assert.equal(drinks.origAmount, 16);
+  assert.equal(drinks.origCurrency, 'CHF');
+  assert.equal(by.THB.fixed, 5640);
+  assert.equal(by.THB.allowance, 3200);
+  assert.equal(by.CHF.fixed, 50);
+  assert.equal(by.CHF.allowance, 80);
+  assert.equal(by.CHF.rows.find((r) => r.title === 'Transfer nach Hause').origCurrency, undefined);
 });
 
 test('Bargeld: Pauschalen in der Währung vor Ort des Tages', async () => {

@@ -8,7 +8,7 @@ Läuft im Browser auf Windows und Android (installierbar als App), die Daten lie
 - **Erfassen** – Unterwegs-Modus: Tag auf dem Zeitstrahl antippen, Betrag (darf gerechnet werden: `300+150`), Währung, Kategorie, fertig. **Schnellknöpfe** mit den häufigsten Ausgaben der Reise. Zeigt das Tagesbudget («Essen: 23 von 80 CHF»).
 - **Offen**
   - **Zahlungskalender** – was ist wann fällig und von welchem Konto, mit «✓ bezahlt»-Knopf.
-  - **Vor Ort / Bargeld** – was noch vor Ort zu bezahlen ist, pro Währung und Station (aufklappbar, «Alle aufklappen»), fixe Beträge und Pauschalen getrennt, CHF-Wert jeweils daneben. Pauschalen werden in der **Währung vor Ort** des Tages gerechnet (Standard: Reisewährung, pro Tag oder für einen Bereich über ✎ beim Tag einstellbar, z.B. Reisetage in der Schweiz auf CHF).
+  - **Vor Ort / Bargeld** – was noch vor Ort zu bezahlen ist, pro Währung und Station (aufklappbar, «Alle aufklappen»), fixe Beträge und Pauschalen getrennt, CHF-Wert jeweils daneben. Alle Beträge – Posten und Pauschalen – stehen in der **Währung vor Ort** des Tages (Standard: Reisewährung, pro Tag oder für einen Bereich über ✎ beim Tag einstellbar, z.B. Reisetage in der Schweiz auf CHF); anders erfasste Posten werden umgerechnet («erfasst: 50 CHF»).
   - **To-dos** – pro Posten (z.B. «Passdaten schicken»), mit Fälligkeit.
 - **Auswertung** – nach Kategorie, Kosten pro Tag, Tagesbudget Plan vs. Ist, nach Ort (pro Nacht), Abrechnung nach Bezahlmethode, Kostenaufteilung, Export (CSV, Druck).
 - **Mehr** – nur Allgemeines: Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
