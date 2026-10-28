@@ -811,3 +811,7 @@ a.contact { color: var(--accent); }
   .net-badge { padding: .2rem .5rem; font-size: .72rem; }
   .trip-btn { min-width: 0; }
 }
+.help { background: var(--line-2); border-radius: 10px; padding: .45rem .7rem; }
+.help summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--ink-2); }
+.help ul { margin: .3rem 0; padding-left: 1.1rem; }
+.help p { margin: .35rem 0; }

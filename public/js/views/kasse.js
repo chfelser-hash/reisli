@@ -167,6 +167,15 @@ export async function countDialog(t) {
     info.textContent = d === 0 ? 'Stimmt genau ✓' : d < 0 ? `${fmtCur(-d, cur)} fehlen – vermutlich nicht erfasste Ausgaben.` : `${fmtCur(d, cur)} mehr als erwartet.`;
   };
   const content = h('div', { class: 'stack' },
+    h('details', { class: 'help' },
+      h('summary', null, 'Was ist ein Kassensturz?'),
+      h('p', { class: 'small' }, 'Zähl das Bargeld im Portemonnaie und tippe den Betrag ein. Reisli vergleicht mit dem erwarteten Bestand (Bezüge minus bar bezahlte Ausgaben).'),
+      h('ul', { class: 'small' },
+        h('li', null, h('strong', null, 'Fehlbetrag als Ausgabe: '), 'Das fehlende Geld wurde ausgegeben, aber nicht erfasst (Trinkgeld, Snacks …). Es wird als Ausgabe «Bargeld – nicht erfasst» gebucht und zählt zu den Reisekosten.'),
+        h('li', null, h('strong', null, 'Nur Bestand korrigieren: '), 'Der Bestand wird angepasst, ohne Ausgabe – z.B. wenn sich Reisli verrechnet hat, ein Betrag doppelt erfasst wurde oder mehr Geld da ist als erwartet. Zählt nicht zu den Kosten.')
+      ),
+      h('p', { class: 'small muted' }, 'Tipp: Alle paar Tage zählen – je kleiner die Differenz, desto besser weiss man noch, wofür das Geld war.')
+    ),
     pots.length > 1 ? chips(pots.map((p) => ({ value: p.currency, label: p.currency })), cur, (x) => { cur = x; upd(); }, 'small') : null,
     h('label', null, 'Gezählt im Portemonnaie', h('input', { class: 'amount-input', inputmode: 'decimal', placeholder: '0', oninput: (e) => { v.counted = e.target.value; upd(); } })),
     info,
