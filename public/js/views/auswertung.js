@@ -66,7 +66,8 @@ function methods(t, sum) {
         h('tr', null, h('th', null, 'Posten'), h('td', { class: 'num' }, fmt(paid)), h('td', { class: 'num' }, fmt(planned)), h('td', { class: 'num' }, fmt(paid + planned))),
         h('tr', { class: 'sub' }, h('th', { colspan: 4, class: 'muted small' }, `davon offen: vorgängig ${fmt(ob.vorgaengig)} + vor Ort ${fmt(ob.vorort)}`)),
         sum.allowance ? h('tr', { class: 'sub' }, h('th', null, 'Pauschalen'), h('td'), h('td', { class: 'num' }, fmt(sum.allowance)), h('td', { class: 'num' }, fmt(sum.allowance))) : null,
-        h('tr', null, h('th', null, 'Prognose total'), h('td'), h('td'), h('td', { class: 'num' }, fmt(sum.forecast))),
+        // Prognose = bezahlt + noch offen (Posten + Pauschalen) – dieselbe Zahl wie «Noch offen» im Plan und unter Offen
+        h('tr', null, h('th', null, 'Prognose total'), h('td', { class: 'num' }, fmt(paid)), h('td', { class: 'num' }, fmt(planned + sum.allowance)), h('td', { class: 'num' }, fmt(sum.forecast))),
         h('tr', { class: 'sub' }, h('th', null, `Pro Person (${sum.travelers})`), h('td'), h('td'), h('td', { class: 'num' }, fmt(sum.perPerson)))
       )
     ),
