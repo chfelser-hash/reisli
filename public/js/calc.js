@@ -364,7 +364,8 @@ export function cashPlan(settings, trip, { withAllowances = false, from = '', to
       if (from && d < from) continue;
       for (const x of list) {
         if (!x.extraCHF) continue;
-        push(cur, { date: d, place: placeFor(trip, null, d), title: 'Pauschale ' + x.allowance.label, amount: round2(fromCHF(settings, x.extraCHF, cur)), allowance: true });
+        // Pauschalen sind Schätzungen → auf ganze Einheiten runden
+        push(cur, { date: d, place: placeFor(trip, null, d), title: x.allowance.label, amount: Math.round(fromCHF(settings, x.extraCHF, cur)), allowance: true, allowanceId: x.allowance.id });
       }
     }
   }
@@ -372,14 +373,23 @@ export function cashPlan(settings, trip, { withAllowances = false, from = '', to
   for (const g of out) {
     g.total = round2(g.total);
     g.rows.sort((a, b) => a.date.localeCompare(b.date));
-    // Zwischensummen pro Ort (aufeinanderfolgende Tage am selben Ort = ein Abschnitt)
+    // Stationen: aufeinanderfolgende Tage am selben Ort = ein Abschnitt; fixe Beträge und Pauschalen getrennt
     g.places = [];
+    g.fixed = 0;
+    g.allowance = 0;
     for (const r of g.rows) {
       const k = r.place || '—';
       let p = g.places[g.places.length - 1];
-      if (!p || p.place !== k) g.places.push((p = { place: k, from: r.date, to: r.date, total: 0 }));
+      if (!p || p.place !== k) g.places.push((p = { place: k, from: r.date, to: r.date, total: 0, fixed: 0, allowance: 0, rows: [] }));
+      p.rows.push(r);
       p.total = round2(p.total + r.amount);
+      if (r.allowance) p.allowance = round2(p.allowance + r.amount);
+      else p.fixed = round2(p.fixed + r.amount);
       if (r.date > p.to) p.to = r.date;
+    }
+    for (const p of g.places) {
+      g.fixed = round2(g.fixed + p.fixed);
+      g.allowance = round2(g.allowance + p.allowance);
     }
   }
   return out.sort((a, b) => b.total * n(rateOf(settings, b.currency)) - a.total * n(rateOf(settings, a.currency)));

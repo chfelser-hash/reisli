@@ -93,25 +93,52 @@ function cash(t) {
     )
   );
   if (!groups.length) return [opts, h('section', { class: 'card' }, h('p', { class: 'empty' }, 'Nichts mehr vor Ort zu bezahlen.'))];
+  const range = (p) => `${fmtDay(p.from)}${p.to !== p.from ? ' – ' + fmtDay(p.to) : ''}`;
   return [opts, ...groups.map((g) => h('section', { class: 'card cash' },
     h('div', { class: 'cash-head' },
       h('span', { class: 'cash-cur' }, g.currency),
       h('span', { class: 'cash-total' }, fmtCur(g.total)),
       g.currency !== 'CHF' ? h('span', { class: 'muted' }, '≈ CHF ' + fmt0(toCHF(S, g.total, g.currency))) : null
     ),
-    h('ul', { class: 'cash-places' }, g.places.map((p) => h('li', null,
-      h('span', null, h('strong', null, p.place), h('span', { class: 'muted small' }, ` ${fmtDay(p.from)}${p.to !== p.from ? ' – ' + fmtDay(p.to) : ''}`)),
-      h('span', { class: 'num strong' }, fmtCur(p.total, g.currency))
-    ))),
-    h('details', null,
-      h('summary', null, 'Einzelposten'),
-      h('ul', { class: 'cash-rows' }, g.rows.map((r) => h('li', { class: r.allowance ? 'allowance' : '' },
-        h('span', { class: 'muted' }, fmtDay(r.date)),
-        r.itemId ? h('button', { class: 'link-like', onclick: () => editItem(t.items.find((x) => x.id === r.itemId)) }, r.title) : h('span', null, r.title),
-        h('span', { class: 'num' }, fmtCur(r.amount))
-      )))
-    )
+    g.allowance ? h('p', { class: 'cash-split' },
+      h('span', null, h('i', { class: 'cs-dot fixed' }), 'fix ', h('strong', null, fmtCur(g.fixed, g.currency))),
+      h('span', null, h('i', { class: 'cs-dot allow' }), 'Pauschalen ', h('strong', null, '~' + fmtCur(g.allowance, g.currency)), h('span', { class: 'muted small' }, ' (Schätzung)'))
+    ) : null,
+    h('div', { class: 'cash-places' }, g.places.map((p) => h('details', { class: 'cash-place' },
+      h('summary', null,
+        h('span', { class: 'cp-name' }, h('strong', null, p.place), h('span', { class: 'muted small' }, ' ' + range(p))),
+        h('span', { class: 'cp-amounts' },
+          p.allowance && p.fixed ? h('span', { class: 'muted small' }, `${fmtCur(p.fixed)} fix + ~${fmtCur(p.allowance)}`) : null,
+          h('strong', { class: 'num' }, (p.fixed ? '' : '~') + fmtCur(p.total, g.currency))
+        )
+      ),
+      stationRows(t, p, g.currency)
+    )))
   ))];
+}
+
+/** Einzelposten einer Station: fixe Beträge einzeln, Pauschalen pro Art zusammengefasst */
+function stationRows(t, p, cur) {
+  const fixed = p.rows.filter((r) => !r.allowance);
+  const allow = new Map();
+  for (const r of p.rows.filter((x) => x.allowance)) {
+    const a = allow.get(r.allowanceId) || { title: r.title, days: 0, total: 0, per: r.amount };
+    a.days++;
+    a.total += r.amount;
+    allow.set(r.allowanceId, a);
+  }
+  return h('ul', { class: 'cash-rows' },
+    fixed.map((r) => h('li', null,
+      h('span', { class: 'muted' }, fmtDay(r.date)),
+      h('button', { class: 'link-like', onclick: () => editItem(t.items.find((x) => x.id === r.itemId)) }, r.title),
+      h('span', { class: 'num' }, fmtCur(r.amount, cur))
+    )),
+    [...allow.values()].map((a) => h('li', { class: 'allowance' },
+      h('span', { class: 'muted' }, a.days === 1 ? '1 Tag' : `${a.days} Tage`),
+      h('span', null, `Pauschale ${a.title}${a.days > 1 ? ` à ~${fmtCur(a.per)}` : ''}`),
+      h('span', { class: 'num' }, '~' + fmtCur(a.total, cur))
+    ))
+  );
 }
 
 // ---------- To-dos ----------
