@@ -96,7 +96,7 @@ export function offlineCard() {
     return card(null, 'Offline auf diesem Gerät', h('p', { class: 'muted small' }, 'Nicht möglich: Offline-Speicher gibt es nur, wenn Reisli über HTTPS geöffnet wird (z.B. über die Tailscale-Adresse).'));
   }
   countCached(files).then((k) => {
-    status.textContent = files.length ? `${k} von ${files.length} Dateien auf diesem Gerät` : 'Keine Dateien vorhanden.';
+    status.textContent = cachedText(k, files.length);
     btn.disabled = !files.length;
   });
   return card(null, 'Offline auf diesem Gerät',
@@ -107,6 +107,12 @@ export function offlineCard() {
 }
 
 // ---------- Offline-Speicher für Dateien ----------
+/** «2 von 3 Dateien auf diesem Gerät» bzw. «Alle 3 …» / «Die Datei …» */
+export function cachedText(k, n) {
+  if (!n) return 'Keine Dateien vorhanden.';
+  if (k === n) return n === 1 ? 'Die Datei ist auf diesem Gerät gespeichert.' : `Alle ${n} Dateien sind auf diesem Gerät gespeichert.`;
+  return `${k} von ${n} Dateien auf diesem Gerät gespeichert.`;
+}
 const FILES_CACHE = 'reisli-files';
 
 export async function countCached(files) {
@@ -135,7 +141,8 @@ export async function cacheFiles(files, statusEl, btn) {
     statusEl.textContent = `${ok} von ${files.length} gespeichert${fail ? ` · ${fail} fehlgeschlagen` : ''} …`;
   }
   btn.disabled = false;
-  statusEl.textContent = fail ? `${ok} von ${files.length} auf diesem Gerät · ${fail} nicht erreichbar` : `Alle ${ok} Dateien auf diesem Gerät`;
+  statusEl.textContent = cachedText(ok, files.length) + (fail ? ` ${fail} nicht erreichbar.` : '');
+  if (!fail) btn.textContent = btn.textContent === 'Offline speichern' ? 'Aktualisieren' : btn.textContent;
   toast(fail ? 'Nicht alle Dateien konnten geladen werden' : 'Offline gespeichert', fail ? { error: true } : {});
 }
 

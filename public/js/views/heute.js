@@ -8,7 +8,7 @@ import {
   placeFor, stayFor, dayCurrency, allowanceMap, tripSummary, cashPlan, rateOf, fromCHF,
 } from '../calc.js';
 import { editItem, catDot } from './item.js';
-import { documentFiles, docsCompact, cacheFiles, countCached } from './dokumente.js';
+import { documentFiles, docsCompact, cacheFiles, countCached, cachedText } from './dokumente.js';
 
 
 /** Läuft die Reise (oder beginnt sie in den nächsten «lead» Tagen)? */
@@ -166,28 +166,37 @@ function budgetCard(S, t, date, today) {
 // ----- Belege & Dokumente -----
 function receiptsCard(t) {
   const withFiles = (t.items || []).filter((it) => it.files?.length).sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
-  const files = [...withFiles.flatMap((it) => it.files), ...documentFiles()];
-  const status = h('span', { class: 'muted small' });
-  const list = h('ul', { class: 'receipts' }, withFiles.map((it) => h('li', null,
-    h('span', { class: 'muted small r-date' }, fmtDay(it.date)),
-    h('div', null, h('div', { class: 'r-title' }, it.title), fileButtons(it))
-  )));
-  const btn = h('button', { class: 'btn small', onclick: () => cacheFiles(files, status, btn) }, 'Alle offline speichern');
-  if (files.length) countCached(files).then((k) => {
-    status.textContent = `${k} von ${files.length} Dateien (Belege + Dokumente) offline verfügbar`;
-    if (k === files.length) btn.textContent = 'Aktualisieren';
-  });
+  const receipts = offlineControls(withFiles.flatMap((it) => it.files));
+  const docs = offlineControls(documentFiles());
   return [
     h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, 'Belege & Tickets'), files.length && 'caches' in window ? btn : null),
-      files.length ? status : null,
-      withFiles.length ? list : h('p', { class: 'muted' }, 'Noch keine Belege. Im Posten unter «Belege» Tickets, Buchungsbestätigungen usw. anhängen.')
+      h('div', { class: 'card-head' }, h('h2', null, 'Belege & Tickets'), receipts.btn),
+      receipts.status,
+      withFiles.length
+        ? h('ul', { class: 'receipts' }, withFiles.map((it) => h('li', null,
+            h('span', { class: 'muted small r-date' }, fmtDay(it.date)),
+            h('div', null, h('div', { class: 'r-title' }, it.title), fileButtons(it))
+          )))
+        : h('p', { class: 'muted' }, 'Noch keine Belege. Im Posten unter «Belege» Tickets, Buchungsbestätigungen usw. anhängen.')
     ),
     h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, 'Reisedokumente'), h('a', { class: 'btn small ghost', href: '#dokumente' }, 'Alle')),
+      h('div', { class: 'card-head' }, h('h2', null, 'Reisedokumente'), h('div', { class: 'row gap' }, docs.btn, h('a', { class: 'btn small ghost', href: '#dokumente' }, 'Alle'))),
+      docs.status,
       docsCompact()
     ),
   ];
+}
+
+/** Knopf «offline speichern» + Status für eine Gruppe von Dateien (ohne Dateien: nichts) */
+function offlineControls(files) {
+  if (!files.length || !('caches' in window)) return { btn: null, status: null };
+  const status = h('p', { class: 'muted small' });
+  const btn = h('button', { class: 'btn small', onclick: () => cacheFiles(files, status, btn) }, 'Offline speichern');
+  countCached(files).then((k) => {
+    status.textContent = cachedText(k, files.length);
+    if (k === files.length) btn.textContent = 'Aktualisieren';
+  });
+  return { btn, status };
 }
 
 // ----- Offline-Status -----
