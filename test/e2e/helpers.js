@@ -1,6 +1,5 @@
 // Hilfsfunktionen für die End-to-End-Tests: Server mit leerem Datenordner starten, API-Zugriff, Testdaten.
 // Es werden ausschliesslich erfundene Beispieldaten verwendet.
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,34 +13,35 @@ export const day = (k) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** Startet Reisli auf einem freien Port mit leerem Datenordner */
+/**
+ * Startet Reisli auf einem freien Port mit leerem Datenordner – im selben Prozess, damit die
+ * Testabdeckung (node --experimental-test-coverage) auch den Server-Code erfasst.
+ * Pro Testdatei genau einmal aufrufen (node --test startet jede Datei in einem eigenen Prozess).
+ */
 export async function startServer() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reisli-e2e-'));
   const port = 18000 + Math.floor(Math.random() * 20000);
-  const proc = spawn(process.execPath, ['server/index.js'], {
-    cwd: ROOT,
-    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, AUTO_RATES: 'false', HOST: '127.0.0.1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let log = '';
-  proc.stdout.on('data', (b) => (log += b));
-  proc.stderr.on('data', (b) => (log += b));
+  Object.assign(process.env, { PORT: String(port), DATA_DIR: dataDir, AUTO_RATES: 'false', HOST: '127.0.0.1' });
+  const log = [];
+  const orig = console.log;
+  console.log = (...a) => log.push(a.join(' ')); // Server-Meldungen nicht in die Testausgabe
+  const mod = await import(path.join(ROOT, 'server/index.js'));
   const base = `http://localhost:${port}`;
   for (let i = 0; i < 100; i++) {
     try {
-      const r = await fetch(base + '/api/status');
-      if (r.ok) break;
+      if ((await fetch(base + '/api/status')).ok) break;
     } catch { /* noch nicht bereit */ }
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
   }
   return {
     base,
     dataDir,
-    log: () => log,
+    log: () => log.join('\n'),
     readData: () => JSON.parse(fs.readFileSync(path.join(dataDir, 'reisli.json'), 'utf8')),
     async stop() {
-      proc.kill();
-      await new Promise((r) => setTimeout(r, 200));
+      mod.server.closeAllConnections?.();
+      await new Promise((r) => mod.server.close(() => r()));
+      console.log = orig;
       fs.rmSync(dataDir, { recursive: true, force: true });
     },
   };

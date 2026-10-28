@@ -16,3 +16,6 @@ Thumbs.db
 *.log
 .env
 test-results/
+
+# Erfundene Test-Excel (keine persönlichen Daten)
+!test/fixtures/*.xlsx

@@ -153,15 +153,16 @@ export function importTripFromExcel(file, { fileName = '', settings, newId }) {
   // ---------- Reiseablauf ----------
   const rows = [];
   let cur = null;
+  let outside = false; // Zeilen mit Datum ausserhalb der Reise (und ihre Folgezeilen ohne Datum) überspringen
   for (const r of [...byRow.keys()].sort((a, b) => a - b)) {
     if (r === 1) continue;
     const d = excelDate(val(r, C.date));
     if (d) {
-      if (allDates.length && (d < allDates[0] || d > allDates[allDates.length - 1])) {
-        warnings.push(`Zeile ${r}: Datum ${d.split('-').reverse().join('.')} liegt ausserhalb der Reise und wurde ignoriert.`);
-      } else cur = d;
+      outside = allDates.length > 0 && (d < allDates[0] || d > allDates[allDates.length - 1]);
+      if (outside) warnings.push(`Zeile ${r}: Datum ${d.split('-').reverse().join('.')} liegt ausserhalb der Reise und wurde ignoriert.`);
+      else cur = d;
     }
-    if (!cur) continue;
+    if (!cur || outside) continue;
     const title = String(val(r, C.title) ?? '').trim();
     const detail = String(val(r, C.detail) ?? '').trim();
     const amountRaw = val(r, C.amount);

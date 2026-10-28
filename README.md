@@ -144,6 +144,12 @@ Voraussetzung: Zugriff über **HTTPS** – sonst erlaubt der Browser keinen Offl
 auch von unterwegs funktioniert, ist Tailscale: **[Anleitung für die DS218+](docs/tailscale.md)**. Über `http://NAS-IP:8081`
 im Heimnetz läuft Reisli wie bisher, aber ohne Offline-Modus.
 
+## Qualität und Versionen
+
+- **Version** in `package.json`, Änderungen in `CHANGELOG.md` (zu sehen unter «Mehr → Über Reisli»). Fehlerkorrekturen → 1.0.**x**, neue Funktionen → 1.**x**.0, grosse Umbauten → **x**.0.0.
+- **Tests** nach dem Pyramiden-Prinzip: Rechenlogik möglichst lückenlos, jeder API-Aufruf mit Erfolgs- und Fehlerfällen, wenige Browser-Abläufe für die wichtigsten Wege (inkl. offline). Nur erfundene Testdaten.
+- **Regeln:** Jeder gefundene Fehler bekommt einen Test, der ihn nachstellt. Jede neue Funktion kommt mit Tests. Auf GitHub muss die Testabdeckung Mindestwerte erreichen (Zeilen 90 %, Zweige 75 %, Funktionen 85 %), sonst wird der Lauf rot.
+
 ## Technisches
 
 | | |
@@ -154,4 +160,4 @@ im Heimnetz läuft Reisli wie bisher, aber ohne Offline-Modus.
 | Daten | `data/reisli.json`, `data/users.json`, `data/files/` (Belege), `data/backups/` |
 | Konfiguration | `PORT` (8081), `DATA_DIR` (./data), `COOKIE_SECURE`, `AUTO_RATES` |
 | Offline | `public/sw.js` (Oberfläche + Belege im Cache), `public/js/idb.js` (Datenstand und Warteschlange in IndexedDB) |
-| Tests | `npm test` (Rechenlogik), `npm run test:e2e` (API und Browser, braucht Playwright). Auf GitHub laufen alle Tests plus ein Docker-Build automatisch bei jedem Push (Reiter «Actions») |
+| Tests | `npm test` (schnell: Rechenlogik, Server-Bausteine, Excel-Import), `npm run test:e2e` (jeder API-Aufruf und Browser-Abläufe, braucht Playwright), `npm run test:coverage` (alles mit Testabdeckung). Auf GitHub laufen alle Tests plus ein Docker-Build bei jedem Push (Reiter «Actions») |

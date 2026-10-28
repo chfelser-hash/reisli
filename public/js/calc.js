@@ -283,7 +283,8 @@ export function allowanceMap(settings, trip, today = todayStr()) {
 // ---------- Zusammenfassung einer Reise ----------
 export function tripSummary(settings, trip, today = todayStr()) {
   const items = trip.items || [];
-  const calcs = new Map(items.map((it) => [it.id, itemCalc(settings, it)]));
+  // nach Objekt (nicht ID) – robust auch für Posten ohne ID, z.B. in der Excel-Vorschau
+  const calcs = new Map(items.map((it) => [it, itemCalc(settings, it)]));
   const allow = allowanceMap(settings, trip, today);
   const byCat = new Map();
   const byDay = new Map();
@@ -294,7 +295,7 @@ export function tripSummary(settings, trip, today = todayStr()) {
   };
   let total = 0, paid = 0, open = 0, allowance = 0, missingRates = 0;
   for (const it of items) {
-    const c = calcs.get(it.id);
+    const c = calcs.get(it);
     if (c.rateMissing) missingRates++;
     total += c.totalCHF;
     paid += c.paidCHF;

@@ -773,3 +773,14 @@ if (AUTO_RATES) {
   setTimeout(run, 5000);
   setInterval(run, 6 * 3600e3).unref();
 }
+
+// Sauber beenden (Docker stop, Ctrl+C): laufende Anfragen fertig, dann aus
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2000).unref();
+  });
+}
+
+// Für die Tests: Server im selben Prozess starten und wieder schliessen
+export { server, cleanupFiles };

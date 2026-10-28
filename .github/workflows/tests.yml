@@ -16,14 +16,27 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Rechenlogik
+      - name: Schnelle Tests (Rechenlogik, Server-Bausteine)
         run: npm test
       - name: Playwright installieren (nur für die Tests, nicht Teil der App)
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
           npx playwright install --with-deps chromium
-      - name: API- und Browser-Tests
-        run: npm run test:e2e
+      - name: Alle Tests mit Testabdeckung (Mindestwerte – sonst rot)
+        run: |
+          set -o pipefail
+          npm run test:coverage 2>&1 | tee test-output.txt
+      - name: Abdeckung in die Zusammenfassung
+        if: always()
+        run: |
+          {
+            echo '### Testabdeckung'
+            echo
+            echo '```'
+            grep -E '^# (file|.*\|)' test-output.txt | sed 's/^# //'
+            echo '```'
+            grep -E '^# (pass|fail) ' test-output.txt | sed 's/^# /- /'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Bildschirmfotos bei Fehlern
         if: failure()
         uses: actions/upload-artifact@v4
