@@ -8,6 +8,8 @@ import { renderAuswertung } from './views/auswertung.js';
 import { renderMehr } from './views/mehr.js';
 import { renderReise } from './views/reise.js';
 import { newTripDialog } from './views/newtrip.js';
+import { renderHeute, syncDialog, tripRunning } from './views/heute.js';
+import { kvGet, kvSet, kvDel } from './idb.js';
 
 export const state = {
   data: null, // { rev, trips, settings, user, users }
@@ -15,10 +17,15 @@ export const state = {
   view: 'plan',
   busy: false, // true während ungespeicherte Eingaben laufen
   params: {},
+  offline: false, // Server gerade nicht erreichbar
+  outbox: [], // offline gemachte Änderungen, die noch zum Server müssen
+  conflicts: [], // Änderungen, die der Server nicht übernehmen konnte
+  savedAt: null, // Zeitpunkt des letzten vollständigen Datenstands vom Server
 };
 
 // Einfache Strich-Icons (SVG-Pfade, 24×24)
 const ICONS = {
+  heute: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
   plan: 'M4 5h16M4 12h16M4 19h10M8 3v4M16 3v4',
   erfassen: 'M12 5v14M5 12h14',
   offen: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
@@ -26,6 +33,8 @@ const ICONS = {
   mehr: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 const VIEWS = [
+  // «Heute» erscheint nur, wenn eine Reise läuft oder in Kürze beginnt
+  { id: 'heute', label: 'Heute', render: () => renderHeute(), when: () => trip() && tripRunning(trip(), 2) },
   { id: 'plan', label: 'Plan', render: renderPlan },
   { id: 'erfassen', label: 'Erfassen', render: renderErfassen },
   { id: 'offen', label: 'Offen', render: renderOffen },
@@ -36,17 +45,71 @@ const VIEWS = [
 ];
 const icon = (id) => s('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': id === 'mehr' ? 3.2 : 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }, s('path', { d: ICONS[id] }));
 
-// ---------- API ----------
-export async function api(method, url, body, opts = {}) {
+// ---------- API (mit Unterwegs-Modus) ----------
+// Ist der Server nicht erreichbar, arbeitet die App mit dem zuletzt geladenen Stand weiter (IndexedDB).
+// Posten, Zahlungen, To-dos und Rückzahlungen lassen sich dann trotzdem erfassen: die Änderungen landen in einer
+// Warteschlange («outbox») und werden beim nächsten Kontakt mit dem Server der Reihe nach nachgesendet.
+
+/** Eindeutige ID, im Browser erzeugt – so kann der Server doppelt gesendete Einträge erkennen */
+export const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+
+const netError = (msg) => Object.assign(new Error(msg), { offline: true });
+
+async function rawFetch(method, url, body, opts = {}) {
   const raw = body instanceof Blob;
-  const res = await fetch(url, {
-    method,
-    headers: raw
-      ? { 'Content-Type': body.type || 'application/octet-stream', 'X-Reisli': '1', 'X-File-Name': encodeURIComponent(opts.fileName || body.name || 'datei') }
-      : { 'Content-Type': 'application/json', 'X-Reisli': '1' },
-    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
-    credentials: 'same-origin',
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout || (raw ? 180000 : 15000));
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: raw
+        ? { 'Content-Type': body.type || 'application/octet-stream', 'X-Reisli': '1', 'X-File-Name': encodeURIComponent(opts.fileName || body.name || 'datei') }
+        : { 'Content-Type': 'application/json', 'X-Reisli': '1' },
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
+      credentials: 'same-origin',
+      signal: ctrl.signal,
+    });
+  } catch {
+    throw netError('Keine Verbindung zum Reisli-Server');
+  } finally {
+    clearTimeout(timer);
+  }
+  // Vorgeschalteter Proxy (z.B. Tailscale) erreicht Reisli nicht
+  if (res.status === 502 || res.status === 503 || res.status === 504) throw netError('Reisli-Server antwortet nicht');
+  return res;
+}
+
+/** Welche Änderungen dürfen offline gemacht werden? */
+function offlineOp(method, url) {
+  let m = url.match(/^\/api\/trips\/([\w-]+)\/items$/);
+  if (m && method === 'POST') return { kind: 'item-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/items\/([\w-]+)$/);
+  if (m && method === 'PUT') return { kind: 'item-put', tripId: m[1], itemId: m[2] };
+  if (m && method === 'DELETE') return { kind: 'item-del', tripId: m[1], itemId: m[2] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/repayments$/);
+  if (m && method === 'POST') return { kind: 'rep-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/repayments\/([\w-]+)$/);
+  if (m && method === 'DELETE') return { kind: 'rep-del', tripId: m[1], repId: m[2] };
+  return null;
+}
+
+export async function api(method, url, body, opts = {}) {
+  const op = method === 'GET' ? null : offlineOp(method, url);
+  if (op?.kind === 'item-new') body = Array.isArray(body) ? body.map((x) => ({ ...x, id: x.id || newId() })) : { ...body, id: body.id || newId() };
+  if (op?.kind === 'rep-new') body = { ...body, id: body.id || newId() };
+  // Liegt noch etwas in der Warteschlange, hinten anstellen – sonst stimmt die Reihenfolge nicht mehr
+  if (op && (state.offline || state.outbox.length)) return enqueue(method, url, body, op);
+  let res;
+  try {
+    res = await rawFetch(method, url, body, opts);
+  } catch (e) {
+    setOffline(true);
+    if (op) return enqueue(method, url, body, op);
+    if (method !== 'GET') throw new Error('Offline – das geht nur mit Verbindung zum Reisli-Server. Ausgaben, Zahlungen und To-dos kannst du auch offline erfassen.');
+    throw e;
+  }
+  setOffline(false);
   if (res.status === 401 && !url.startsWith('/api/login')) {
     showLogin(false);
     throw new Error('Nicht angemeldet');
@@ -54,15 +117,156 @@ export async function api(method, url, body, opts = {}) {
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
   if (!res.ok) throw new Error(data?.error || 'Fehler ' + res.status);
   if (data && typeof data.rev === 'number' && state.data) state.data.rev = data.rev;
+  if (method !== 'GET') scheduleSnapshot();
   return data;
 }
 
-export async function reload() {
-  state.data = await api('GET', '/api/data');
+// ----- Warteschlange -----
+const listOf = (b) => (Array.isArray(b) ? b : [b]);
+
+function enqueue(method, url, body, op) {
+  const ob = state.outbox;
+  const now = new Date().toISOString();
+  const by = state.data?.user?.name || '';
+  const t = state.data?.trips.find((x) => x.id === op.tripId);
+  const entry = { id: newId(), at: now, method, url, body, ...op };
+  let res = {};
+  if (op.kind === 'item-new') {
+    ob.push(entry);
+    res = { created: listOf(body).map((x) => ({ payments: [], todos: [], ...x, files: [], by, createdAt: now })) };
+  } else if (op.kind === 'item-put') {
+    const cur = t?.items.find((x) => x.id === op.itemId);
+    const pendingNew = ob.find((o) => o.kind === 'item-new' && listOf(o.body).some((x) => x.id === op.itemId));
+    const pendingPut = ob.find((o) => o.kind === 'item-put' && o.itemId === op.itemId);
+    if (pendingNew) {
+      // Noch nicht übertragener neuer Posten: einfach den neuen Stand senden
+      pendingNew.body = Array.isArray(pendingNew.body) ? pendingNew.body.map((x) => (x.id === op.itemId ? { ...body, id: op.itemId } : x)) : { ...body, id: op.itemId };
+    } else if (pendingPut) {
+      pendingPut.body = { ...body, baseUpdatedAt: pendingPut.body.baseUpdatedAt };
+    } else {
+      ob.push({ ...entry, body: { ...body, baseUpdatedAt: cur ? cur.updatedAt || cur.createdAt : undefined } });
+    }
+    res = { item: { ...cur, ...body, files: cur?.files || [], updatedAt: now } };
+  } else if (op.kind === 'item-del') {
+    const pendingNew = ob.find((o) => o.kind === 'item-new' && listOf(o.body).some((x) => x.id === op.itemId));
+    state.outbox = ob.filter((o) => !(o.kind === 'item-put' && o.itemId === op.itemId));
+    if (pendingNew) {
+      const rest = listOf(pendingNew.body).filter((x) => x.id !== op.itemId);
+      if (rest.length) pendingNew.body = rest;
+      else state.outbox = state.outbox.filter((o) => o !== pendingNew);
+    } else state.outbox.push(entry);
+  } else if (op.kind === 'rep-new') {
+    ob.push(entry);
+    res = { repayment: { ...body, by, createdAt: now } };
+  } else if (op.kind === 'rep-del') {
+    const pendingNew = ob.find((o) => o.kind === 'rep-new' && o.body.id === op.repId);
+    if (pendingNew) state.outbox = ob.filter((o) => o !== pendingNew);
+    else ob.push(entry);
+  }
+  saveQueues();
+  scheduleSnapshot();
+  updateNetBadge();
+  if (!state.offline) setTimeout(() => sync(), 0);
+  return Promise.resolve(res);
+}
+
+function saveQueues() {
+  kvSet('outbox', state.outbox);
+  kvSet('conflicts', state.conflicts);
+}
+
+/** Lokale Kopie aktualisieren (kurz verzögert, damit die aufrufende Ansicht ihre Änderung schon übernommen hat) */
+let snapTimer;
+function scheduleSnapshot() {
+  clearTimeout(snapTimer);
+  snapTimer = setTimeout(() => {
+    if (!state.data) return;
+    kvSet('data', state.data);
+    kvSet('savedAt', state.savedAt);
+  }, 300);
+}
+
+function setOffline(v) {
+  if (state.offline === v) return;
+  state.offline = v;
+  updateNetBadge();
+  if (!v && state.outbox.length) setTimeout(() => sync(), 0);
+}
+
+/** Inhaltlich gleich? (Dann war ein «Konflikt» nur unsere eigene, schon angekommene Änderung) */
+function sameItem(a, b) {
+  if (!a || !b) return false;
+  const pay = (p) => (p || []).map((x) => [x.id, x.date || '', +x.amount || 0, x.currency, x.chf ?? null, x.methodId || '', x.paidBy || '', x.note || '']);
+  const pick = (x) => JSON.stringify([x.date, x.endDate || '', x.time || '', x.title, x.detail || '', x.catId, x.place || '', +x.plan?.amount || 0, x.plan?.currency, !!x.reserved, x.payWhere, x.dueDate || '', x.dueMethodId || '', pay(x.payments), !!x.done, x.note || '', (x.todos || []).map((t) => [t.text, !!t.done, t.due || ''])]);
+  return pick(a) === pick(b);
+}
+
+let syncing = null;
+/** Warteschlange nachsenden. Liefert true, wenn danach nichts mehr wartet. */
+export function sync() {
+  return (syncing ||= doSync().finally(() => (syncing = null)));
+}
+async function doSync() {
+  let sent = 0;
+  while (state.outbox.length) {
+    const op = state.outbox[0];
+    let res;
+    try {
+      res = await rawFetch(op.method, op.url, op.body);
+    } catch {
+      setOffline(true);
+      break;
+    }
+    setOffline(false);
+    if (res.status === 401) { showLogin(false); break; }
+    if (res.status >= 500) break; // später nochmals
+    const data = res.headers.get('content-type')?.includes('json') ? await res.json() : {};
+    if (res.status === 409 && op.kind === 'item-put') {
+      if (!sameItem(op.body, data.item)) state.conflicts.push({ id: op.id, at: op.at, tripId: op.tripId, itemId: op.itemId, mine: op.body, theirs: data.item });
+    } else if (!res.ok) {
+      state.conflicts.push({ id: op.id, at: op.at, tripId: op.tripId, op, error: data?.error || 'Fehler ' + res.status });
+    }
+    state.outbox.shift();
+    sent++;
+    saveQueues();
+  }
+  updateNetBadge();
+  if (sent && !state.outbox.length) {
+    // Frischen Stand holen – ausser jemand tippt gerade (dann übernimmt das die regelmässige Abfrage)
+    if (!state.busy && !document.querySelector('dialog[open]')) {
+      try { await reload(false); render(); } catch { /* egal */ }
+    }
+    toast(state.conflicts.length ? `Offline-Änderungen übertragen – ${state.conflicts.length} Konflikt(e) prüfen` : `${sent} Offline-Änderung${sent === 1 ? '' : 'en'} übertragen`, state.conflicts.length ? { action: { label: 'Prüfen', fn: () => syncDialog() } } : {});
+  }
+  return !state.outbox.length;
+}
+
+export async function reload(withSync = true) {
+  if (withSync && state.outbox.length) await sync();
+  if (state.outbox.length && state.data) return; // noch offline: lokalen Stand behalten
+  try {
+    state.data = await api('GET', '/api/data');
+    state.savedAt = new Date().toISOString();
+    kvSet('data', state.data);
+    kvSet('savedAt', state.savedAt);
+  } catch (e) {
+    if (!e.offline) throw e;
+    if (!state.data) {
+      const snap = await kvGet('data');
+      if (!snap) throw new Error('Keine Verbindung zum Reisli-Server und auf diesem Gerät sind noch keine Offline-Daten gespeichert.');
+      state.data = snap;
+      state.savedAt = await kvGet('savedAt');
+    }
+  }
   const trips = state.data.trips;
   let saved = null;
   try { saved = localStorage.getItem('reisli.trip'); } catch { /* privat */ }
   if (!trips.some((t) => t.id === state.tripId)) state.tripId = trips.some((t) => t.id === saved) ? saved : defaultTrip()?.id || null;
+}
+
+/** Alles Lokale löschen (beim Abmelden) */
+export async function clearLocal() {
+  await Promise.all(['data', 'savedAt', 'outbox', 'conflicts'].map(kvDel));
 }
 
 /** Nächste anstehende Reise (oder die laufende), sonst die zuletzt angelegte */
@@ -196,6 +400,7 @@ export function render() {
   main().replaceChildren(el);
   const t = trip();
   document.title = `${v.label}${t ? ' · ' + t.name : ''} · Reisli`;
+  updateNetBadge();
 }
 
 function renderChrome(activeTab) {
@@ -203,10 +408,30 @@ function renderChrome(activeTab) {
   header.replaceChildren(
     h('a', { class: 'brand', href: '#plan' }, h('img', { class: 'logo', src: '/icons/icon.svg', alt: '' }), h('span', null, 'Reisli')),
     h('nav', { class: 'tabs' },
-      VIEWS.filter((v) => !v.hidden).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', null, v.label)))
+      VIEWS.filter((v) => !v.hidden && (!v.when || v.when() || activeTab === v.id)).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', null, v.label)))
     ),
+    netBadge(),
     tripPicker()
   );
+}
+
+/** Anzeige oben: offline / Änderungen warten / Konflikte – Klick öffnet die Übersicht */
+function netBadge() {
+  return h('button', { type: 'button', id: 'net-badge', class: 'net-badge', hidden: true, onclick: () => syncDialog() });
+}
+export function updateNetBadge() {
+  const el = document.getElementById('net-badge');
+  if (!el) return;
+  const n = state.outbox.length;
+  const c = state.conflicts.length;
+  const parts = [];
+  if (state.offline) parts.push('Offline');
+  if (n) parts.push(`${n} wartend`);
+  if (c) parts.push(`⚠ ${c} Konflikt${c === 1 ? '' : 'e'}`);
+  el.hidden = !parts.length;
+  el.textContent = parts.join(' · ');
+  el.className = 'net-badge' + (c ? ' warn' : state.offline ? ' off' : ' pending');
+  el.title = state.offline ? 'Keine Verbindung zum Reisli-Server – du arbeitest mit dem gespeicherten Stand' : '';
 }
 
 // ---------- Reise-Auswahl (eigenes Menü mit Zeitspanne) ----------
@@ -294,6 +519,7 @@ function startPolling() {
   clearInterval(polling);
   const check = async () => {
     if (document.hidden || !state.data || state.busy || document.querySelector('dialog[open]')) return;
+    if (state.outbox.length) { await sync(); if (state.outbox.length) return; }
     try {
       const { rev } = await api('GET', '/api/rev');
       if (rev !== state.data.rev) {
@@ -305,16 +531,35 @@ function startPolling() {
   };
   polling = setInterval(check, 20000);
   document.addEventListener('visibilitychange', () => !document.hidden && check());
+  window.addEventListener('online', check);
+}
+
+/** Startansicht: während einer Reise «Heute», sonst der Plan */
+function defaultView() {
+  const t = trip();
+  return t && tripRunning(t) ? 'heute' : 'plan';
 }
 
 async function start() {
-  const st = await (await fetch('/api/status', { credentials: 'same-origin' })).json();
-  if (!st.user) return showLogin(st.needsSetup);
+  [state.outbox, state.conflicts] = await Promise.all([kvGet('outbox'), kvGet('conflicts')]).then((r) => r.map((x) => x || []));
+  let st = null;
+  try {
+    st = await (await rawFetch('GET', '/api/status', undefined, { timeout: 8000 })).json();
+    setOffline(false);
+  } catch {
+    setOffline(true);
+  }
+  if (st && !st.user) return showLogin(st.needsSetup);
+  // Anderes Konto als beim letzten Mal: alte lokale Kopie nicht weiterverwenden
+  if (st) {
+    const snap = await kvGet('data');
+    if (snap?.user && snap.user.name !== st.user.name) { await clearLocal(); state.outbox = []; state.conflicts = []; }
+  }
   await reload();
-  state.view = (location.hash || '#plan').slice(1);
+  state.view = location.hash.slice(1) || defaultView();
   render();
   startPolling();
-  autoRefreshRates();
+  if (!state.offline) autoRefreshRates();
 }
 
 window.addEventListener('hashchange', () => {

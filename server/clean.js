@@ -56,6 +56,10 @@ export function cleanItem(input, user, existing = {}) {
     payments: (Array.isArray(input.payments) ? input.payments : []).slice(0, 50).map(cleanPayment),
     done: !!input.done,
     link: /^https?:\/\//i.test(input.link || '') ? str(input.link, 500) : '',
+    // Für unterwegs: Buchungsnummer, Adresse, Telefon (z.B. Unterkunft)
+    bookingRef: str(input.bookingRef, 80),
+    address: str(input.address, 300),
+    phone: str(input.phone, 40),
     note: str(input.note, 2000),
     todos: (Array.isArray(input.todos) ? input.todos : []).slice(0, 50).map((t) => ({ id: id(t.id), text: str(t.text, 200), due: optDate(t.due), done: !!t.done })).filter((t) => t.text.trim()),
     // Belege werden nur über die Datei-API geändert – hier immer den gespeicherten Stand behalten

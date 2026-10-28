@@ -24,6 +24,9 @@ export function blankItem(date, extra = {}) {
     payments: [],
     done: false,
     link: '',
+    bookingRef: '',
+    address: '',
+    phone: '',
     note: '',
     todos: [],
     files: [],
@@ -342,6 +345,11 @@ export async function editItem(original, opts = {}) {
       todoList
     ),
     h('section', { class: 'ed-sec' },
+      h('div', { class: 'grid3' },
+        h('label', null, 'Buchungsnummer', h('input', { value: it.bookingRef || '', autocomplete: 'off', placeholder: 'z.B. 4711-ABC', oninput: (e) => (it.bookingRef = e.target.value.trim()) })),
+        h('label', null, 'Telefon', h('input', { type: 'tel', value: it.phone || '', placeholder: '+66 …', oninput: (e) => (it.phone = e.target.value.trim()) })),
+        h('label', { class: 'span-all' }, 'Adresse', h('input', { value: it.address || '', placeholder: 'für Taxi und Karte', oninput: (e) => (it.address = e.target.value) }))
+      ),
       h('label', null, 'Link (Buchung, Bestätigung …)', h('input', { type: 'url', value: it.link || '', placeholder: 'https://', oninput: (e) => (it.link = e.target.value.trim()) })),
       h('label', null, 'Notiz', h('textarea', { rows: 3, oninput: (e) => (it.note = e.target.value) }, it.note || '')),
       h('div', { class: 'row gap wrap' }, h('h3', null, 'Belege'), h('span', { class: 'spacer' }), h('label', { class: 'btn small file-btn' }, '+ Datei', fileInput)),

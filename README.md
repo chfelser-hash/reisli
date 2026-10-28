@@ -4,6 +4,7 @@ Ferienbudget als Web-App – Nachfolger der Ferien-Excel, Geschwister vom [Käss
 Läuft im Browser auf Windows und Android (installierbar als App), die Daten liegen auf der eigenen Synology NAS.
 
 - **Reise-Auswahl** (oben rechts) – Name und Zeitspanne, gruppiert nach laufend/kommend, vergangen und Archiv. «+ Neue Reise» öffnet ein eigenes Fenster: leer, als Kopie einer bestehenden Reise oder aus der Excel.
+- **Heute** (erscheint 2 Tage vor Abreise bis Reiseende, dann auch Startansicht) – der Tag auf einen Blick: Unterkunft mit Adresse (Karte), Telefon und Buchungsnummer, Programm mit Zeiten, Belege und Tickets zum Antippen, Tagesbudget, was vor Ort noch zu bezahlen ist. Mit ‹ › durch die Tage blättern. **Funktioniert auch offline** (siehe unten).
 - **Plan** – Reiseablauf Tag für Tag: Programm, Ort, Unterkunft (über mehrere Nächte), Posten mit Status und Betrag in Lokalwährung + CHF, Pauschalen. Ein **Zeitstrahl** springt zu jedem Tag. Umschaltbar auf eine kompakte **Übersicht** wie im Excel. Oben: Prognose total, pro Person, bezahlt, noch offen, Countdown und ✎ **Reise bearbeiten** (Daten, Pauschalen, Kostenaufteilung, Kopieren, Archivieren, Löschen).
 - **Erfassen** – Unterwegs-Modus: Tag auf dem Zeitstrahl antippen, Betrag (darf gerechnet werden: `300+150`), Währung, Kategorie, fertig. **Schnellknöpfe** mit den häufigsten Ausgaben der Reise. Zeigt das Tagesbudget («Essen: 23 von 80 CHF»).
 - **Offen**
@@ -121,6 +122,24 @@ Bezahlte Beträge sind davon nicht betroffen – sie behalten den effektiv belas
 - **Android (Chrome):** Seite öffnen → Menü ⋮ → «Zum Startbildschirm hinzufügen» / «App installieren» (bei Zugriff über `http://` im Heimnetz erscheint nur «Zum Startbildschirm hinzufügen»).
 - **Windows (Edge/Chrome):** In der Adressleiste auf das Installieren-Symbol klicken.
 
+## 7. Unterwegs-Modus (offline)
+
+Reisli merkt sich auf jedem Gerät den zuletzt geladenen Stand. Ohne Verbindung zur NAS (Flugzeug, Funkloch, NAS aus)
+steht oben **«Offline»** und die App läuft mit diesem Stand weiter:
+
+- **Offline möglich:** Ausgaben erfassen, Zahlungen eintragen, Posten ändern oder löschen, To-dos abhaken, Rückzahlungen.
+  Die Änderungen warten auf dem Gerät («3 wartend») und werden automatisch übertragen, sobald die NAS wieder erreichbar ist.
+- **Nur online:** Reise, Tage und Pauschalen bearbeiten, Einstellungen, Belege hochladen, Import, Sicherung.
+- **Belege:** einmal geöffnete Belege bleiben auf dem Gerät; «Heute → Alle offline speichern» lädt alle Belege der Reise.
+- **Beide Handys gleichzeitig:** neue Ausgaben kommen nie in die Quere. Wurde derselbe Posten offline auf dem einen und
+  zwischendurch auf dem anderen Gerät geändert, meldet Reisli einen **Konflikt** (oben «⚠ 1 Konflikt»): beide Versionen
+  stehen nebeneinander, du wählst, welche gilt.
+- Beim **Abmelden** wird die lokale Kopie gelöscht.
+
+Voraussetzung: Zugriff über **HTTPS** – sonst erlaubt der Browser keinen Offline-Speicher. Die einfachste Lösung, die
+auch von unterwegs funktioniert, ist Tailscale: **[Anleitung für die DS218+](docs/tailscale.md)**. Über `http://NAS-IP:8081`
+im Heimnetz läuft Reisli wie bisher, aber ohne Offline-Modus.
+
 ## Technisches
 
 | | |
@@ -130,4 +149,5 @@ Bezahlte Beträge sind davon nicht betroffen – sie behalten den effektiv belas
 | Rechenlogik | `public/js/calc.js` – wird von Browser, Server (Import) und Tests gemeinsam genutzt |
 | Daten | `data/reisli.json`, `data/users.json`, `data/files/` (Belege), `data/backups/` |
 | Konfiguration | `PORT` (8081), `DATA_DIR` (./data), `COOKIE_SECURE`, `AUTO_RATES` |
+| Offline | `public/sw.js` (Oberfläche + Belege im Cache), `public/js/idb.js` (Datenstand und Warteschlange in IndexedDB) |
 | Tests | `npm test` |

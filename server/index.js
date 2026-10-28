@@ -325,6 +325,8 @@ async function api(req, res, url) {
       const ids = new Set(t.split.participants.map((x) => x.id));
       const rep = { ...cleanRepayment(b), by: user.name, createdAt: new Date().toISOString() };
       if (!ids.has(rep.from) || !ids.has(rep.to)) throw httpError(400, 'Person unbekannt');
+      const dup = t.repayments.find((x) => x.id === rep.id);
+      if (dup) return dup;
       t.repayments.push(rep);
       return rep;
     });
@@ -346,8 +348,17 @@ async function api(req, res, url) {
     const list = Array.isArray(b) ? b : [b];
     const created = store.mutate((d) => {
       const t = findTrip(d, m[1]);
-      const out = list.map((x) => cleanItem({ ...x, id: undefined }, user));
-      t.items.push(...out);
+      // Eine gültige Browser-ID wird übernommen: so ist das Nachsenden aus dem Offline-Speicher idempotent
+      const have = new Set(t.items.map((x) => x.id));
+      const out = [];
+      for (const x of list) {
+        const keep = typeof x.id === 'string' && /^[\w-]{8,40}$/.test(x.id);
+        if (keep && have.has(x.id)) { out.push(t.items.find((y) => y.id === x.id)); continue; }
+        const it = cleanItem({ ...x, id: keep ? x.id : undefined }, user);
+        t.items.push(it);
+        have.add(it.id);
+        out.push(it);
+      }
       return out;
     });
     return send(res, 200, { rev: store.rev, created });
@@ -359,7 +370,12 @@ async function api(req, res, url) {
       const t = findTrip(d, m[1]);
       const i = t.items.findIndex((x) => x.id === m[2]);
       if (i < 0) throw httpError(404, 'Posten nicht gefunden');
-      t.items[i] = cleanItem(b, user, t.items[i]);
+      // Offline bearbeitet: wurde der Posten inzwischen auf dem anderen Gerät geändert? → Konflikt melden
+      const cur = t.items[i];
+      if (b.baseUpdatedAt && b.baseUpdatedAt !== (cur.updatedAt || cur.createdAt)) {
+        throw Object.assign(httpError(409, 'Posten wurde inzwischen geändert'), { extra: { item: cur } });
+      }
+      t.items[i] = cleanItem(b, user, cur);
       return t.items[i];
     });
     return send(res, 200, { rev: store.rev, item });
@@ -367,7 +383,7 @@ async function api(req, res, url) {
   if (m && method === 'DELETE') {
     store.mutate((d) => {
       const t = findTrip(d, m[1]);
-      const it = findItem(t, m[2]);
+      // Bereits gelöscht (z.B. doppelt nachgesendet) ist kein Fehler
       t.items = t.items.filter((x) => x.id !== m[2]);
     });
     return send(res, 200, { rev: store.rev });
@@ -606,7 +622,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     const status = e.status || 500;
     if (status === 500) console.error(e);
-    if (!res.headersSent) send(res, status, { error: status === 500 ? 'Interner Fehler' : e.message });
+    if (!res.headersSent) send(res, status, { error: status === 500 ? 'Interner Fehler' : e.message, ...(e.extra || {}) });
   }
 });
 

@@ -1,7 +1,7 @@
 // Ansicht «Mehr»: allgemeine Einstellungen – Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
 // Alles, was nur eine Reise betrifft, liegt unter «Reise bearbeiten» (✎ im Plan).
 import { h, toast, confirmDialog } from '../ui.js';
-import { state, api, reload, render, settings, selectTrip, download, refreshRates, replaceMethodDialog } from '../app.js';
+import { state, api, reload, render, settings, selectTrip, download, refreshRates, replaceMethodDialog, clearLocal } from '../app.js';
 import { fmt0, fmtCur, fmtDate, methodUsage } from '../calc.js';
 import { card, uid, saveSettings } from './shared.js';
 
@@ -9,7 +9,13 @@ export function renderMehr() {
   const view = h('div', { class: 'view mehr' },
     h('div', { class: 'settings-grid' }, methodsCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
     h('div', { class: 'row gap wrap' },
-      h('button', { class: 'btn ghost', onclick: async () => { await api('POST', '/api/logout'); location.reload(); } }, 'Abmelden'),
+      h('button', { class: 'btn ghost', onclick: async () => {
+        if (state.outbox.length && !(await confirmDialog('Abmelden', `${state.outbox.length} offline erfasste Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Trotzdem abmelden?`, 'Abmelden', true))) return;
+        try { await api('POST', '/api/logout'); } catch { /* offline – lokal trotzdem abmelden */ }
+        await clearLocal();
+        try { await caches.delete('reisli-files'); } catch { /* egal */ }
+        location.reload();
+      } }, 'Abmelden'),
       h('span', { class: 'muted small' }, `Angemeldet als ${state.data.user.name}`)
     )
   );
