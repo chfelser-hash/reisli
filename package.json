@@ -12,7 +12,8 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "import-excel": "node scripts/import-excel.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e/*.test.js"
   },
   "license": "MIT"
 }

@@ -1,0 +1,51 @@
+# Automatische Tests bei jedem Push und Pull Request – nur mit erfundenen Testdaten.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Rechenlogik, API und Browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rechenlogik
+        run: npm test
+      - name: Playwright installieren (nur für die Tests, nicht Teil der App)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: API- und Browser-Tests
+        run: npm run test:e2e
+      - name: Bildschirmfotos bei Fehlern
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+  docker:
+    name: Docker-Image (wie auf der NAS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image bauen
+        run: docker build -t reisli-test .
+      - name: Container starten und prüfen
+        run: |
+          docker run -d --name reisli -p 8081:8081 reisli-test
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8081/api/status; then echo; echo "Reisli läuft"; exit 0; fi
+            sleep 1
+          done
+          docker logs reisli
+          exit 1

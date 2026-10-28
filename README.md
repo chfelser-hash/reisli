@@ -154,4 +154,4 @@ im Heimnetz läuft Reisli wie bisher, aber ohne Offline-Modus.
 | Daten | `data/reisli.json`, `data/users.json`, `data/files/` (Belege), `data/backups/` |
 | Konfiguration | `PORT` (8081), `DATA_DIR` (./data), `COOKIE_SECURE`, `AUTO_RATES` |
 | Offline | `public/sw.js` (Oberfläche + Belege im Cache), `public/js/idb.js` (Datenstand und Warteschlange in IndexedDB) |
-| Tests | `npm test` |
+| Tests | `npm test` (Rechenlogik), `npm run test:e2e` (API und Browser, braucht Playwright). Auf GitHub laufen alle Tests plus ein Docker-Build automatisch bei jedem Push (Reiter «Actions») |
