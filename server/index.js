@@ -153,7 +153,7 @@ function cleanupFiles() {
 /** Komplette Sicherung, optional inkl. Belege (Base64) */
 function backupPayload(withFiles) {
   const { trips, settings, documents } = store.data;
-  const out = { app: 'reisli', schema: 1, exportedAt: new Date().toISOString(), trips, documents, settings };
+  const out = { app: 'reisli', schema: 1, exportedAt: new Date().toISOString(), trips, documents, docsSchema: store.data.docsSchema, settings };
   if (withFiles) {
     out.files = {};
     const all = [...trips.flatMap((t) => t.items.flatMap((it) => it.files || [])), ...documents.flatMap((doc) => doc.files || [])];
@@ -609,7 +609,7 @@ async function api(req, res, url) {
     if (!b || !Array.isArray(b.trips) || typeof b.settings !== 'object') throw httpError(400, 'Keine gültige Reisli-Sicherung');
     const trips = b.trips.map((t) => cleanTrip(t, user));
     const documents = Array.isArray(b.documents) ? b.documents.flatMap((x) => { try { return [{ ...cleanDocument(x, user), files: Array.isArray(x.files) ? x.files.filter((f) => f && /^[\w-]+$/.test(f.id)).map((f) => ({ id: f.id, name: str(f.name, 160), size: Number(f.size) || 0, type: str(f.type, 80) })) : [] }]; } catch { return []; } }) : store.data.documents;
-    store.replaceAll({ trips, documents, settings: cleanSettings(b.settings, store.data.settings) });
+    store.replaceAll({ trips, documents, docsSchema: Array.isArray(b.documents) ? b.docsSchema : store.data.docsSchema, settings: cleanSettings(b.settings, store.data.settings) });
     const files = restoreFiles(b.files);
     return send(res, 200, { rev: store.rev, mode: 'all', trips: trips.length, files });
   }

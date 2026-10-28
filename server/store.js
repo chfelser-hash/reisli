@@ -116,6 +116,14 @@ export function migrate(d) {
   // Allgemeine Reisedokumente (Pass, Krankenkasse, Brevets …) – gelten für alle Reisen
   out.documents = Array.isArray(out.documents) ? out.documents : [];
   for (const doc of out.documents) doc.files = Array.isArray(doc.files) ? doc.files : [];
+  // Einmalig: frühere Kategorie «Tauchen» aufteilen in Versicherungen (DAN …) und Tauchbrevets
+  if ((out.docsSchema || 1) < 2) {
+    for (const doc of out.documents) {
+      if (doc.kind !== 'tauchen') continue;
+      doc.kind = /versicher|insurance|\bdan\b/i.test(`${doc.title} ${doc.note || ''}`) ? 'versicherung' : 'brevet';
+    }
+    out.docsSchema = 2;
+  }
   return out;
 }
 

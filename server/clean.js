@@ -161,7 +161,7 @@ export function cleanSettings(b, current) {
   return out;
 }
 
-export const DOC_KINDS = ['pass', 'id', 'krankenkasse', 'versicherung', 'tauchen', 'fuehrerschein', 'impfung', 'visum', 'notfall', 'sonstiges'];
+export const DOC_KINDS = ['pass', 'id', 'krankenkasse', 'versicherung', 'brevet', 'tauchen', 'fuehrerschein', 'impfung', 'visum', 'notfall', 'sonstiges'];
 /** Allgemeines Reisedokument; Dateien nur über die Datei-API */
 export function cleanDocument(input, user, existing = {}) {
   const title = str(input.title, 120).trim();
@@ -173,6 +173,8 @@ export function cleanDocument(input, user, existing = {}) {
     person: str(input.person, 60).trim(),
     number: str(input.number, 80).trim(),
     validUntil: optDate(input.validUntil),
+    // Ausgestellt (v.a. Brevets): Jahr oder Datum
+    issued: /^\d{4}(-\d{2}-\d{2})?$/.test(input.issued || '') ? input.issued : '',
     phone: str(input.phone, 40).trim(),
     note: str(input.note, 2000),
     files: existing.files || [],
