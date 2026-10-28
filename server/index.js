@@ -232,12 +232,15 @@ async function api(req, res, url) {
     return send(res, 200, { rev: store.rev, trip });
   }
   if (m && method === 'DELETE') {
+    // Sicherheitsnetz: vorher eine eigene Sicherung anlegen. Belege bleiben auf der Platte,
+    // damit eine Wiederherstellung sie wieder findet.
+    const t0 = findTrip(store.data, m[1]);
+    const label = 'vor-loeschen-' + t0.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    const backup = store.snapshot(label);
     store.mutate((d) => {
-      const t = findTrip(d, m[1]);
-      for (const it of t.items) removeFiles(it.files);
       d.trips = d.trips.filter((x) => x.id !== m[1]);
     });
-    return send(res, 200, { rev: store.rev });
+    return send(res, 200, { rev: store.rev, backup });
   }
   m = p.match(/^\/api\/trips\/([\w-]+)\/copy$/);
   if (m && method === 'POST') {

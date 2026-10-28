@@ -54,13 +54,34 @@ function tripCard(t) {
       h('button', { class: 'btn', onclick: () => newTripDialog('kopie', t.id) }, 'Als Vorlage kopieren …'),
       h('button', { class: 'btn', onclick: async () => { await saveTripMeta({ archived: !t.archived }); render(); toast(t.archived ? 'Archiviert' : 'Wieder aktiv'); } }, t.archived ? 'Aus Archiv holen' : 'Archivieren'),
       h('button', { class: 'btn danger', onclick: async () => {
-        if (!(await confirmDialog('Reise löschen', `«${t.name}» mit allen ${t.items.length} Posten und Belegen endgültig löschen? (Die tägliche Sicherung bleibt 30 Tage erhalten.)`, 'Löschen', true))) return;
+        // Doppelte Absicherung: Namen eintippen; der Server legt vorher eine Sicherung an
+        const paid = t.items.reduce((a, it) => a + (it.payments || []).length, 0);
+        const input = h('input', { placeholder: t.name, autocomplete: 'off', 'aria-label': 'Name der Reise' });
+        const err = h('p', { class: 'form-error' });
+        const r = await modal('Reise löschen', h('div', { class: 'stack' },
+          h('p', null, h('strong', null, `«${t.name}» wirklich löschen?`)),
+          h('p', null, `Betroffen: ${t.items.length} Posten, ${paid} Zahlungen, ${(t.repayments || []).length} Rückzahlungen.`),
+          h('p', { class: 'muted small' }, 'Vorher wird automatisch eine Sicherung angelegt (Mehr → Sicherung → «vor-loeschen-…»), damit du die Reise zurückholen kannst. Wenn du sie nur nicht mehr sehen willst: lieber «Archivieren».'),
+          h('label', null, 'Zur Bestätigung den Namen der Reise eintippen', input),
+          err
+        ), [
+          { label: 'Abbrechen', value: null },
+          { label: 'Endgültig löschen', primary: true, danger: true, onClick: () => {
+            if (input.value.trim() !== t.name.trim()) {
+              err.textContent = 'Der Name stimmt nicht überein.';
+              input.focus();
+              return false;
+            }
+            return 'ok';
+          } },
+        ]);
+        if (r !== 'ok') return;
         await api('DELETE', '/api/trips/' + t.id);
         state.data.trips = state.data.trips.filter((x) => x.id !== t.id);
         state.tripId = null;
         await reload();
         go('plan');
-        toast('Reise gelöscht');
+        toast('Reise gelöscht – Sicherung wurde vorher angelegt', { duration: 5000 });
       } }, 'Löschen')
     )
   );
