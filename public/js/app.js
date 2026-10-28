@@ -37,7 +37,8 @@ const ICONS = {
 };
 const VIEWS = [
   // «Heute» erscheint nur, wenn eine Reise läuft oder in Kürze beginnt
-  { id: 'heute', label: 'Heute', render: () => renderHeute(), when: () => trip() && tripRunning(trip(), 2) },
+  // «Heute» gibt es, solange eine Reise läuft oder bevorsteht – und zeigt immer diese nächste Reise
+  { id: 'heute', label: 'Heute', render: () => renderHeute(), when: () => !!nextTrip() },
   { id: 'plan', label: 'Plan', render: renderPlan },
   { id: 'erfassen', label: 'Erfassen', short: 'Neu', render: renderErfassen },
   { id: 'offen', label: 'Offen', render: renderOffen },
@@ -311,6 +312,16 @@ export async function clearLocal() {
 }
 
 /** Nächste anstehende Reise (oder die laufende), sonst die zuletzt angelegte */
+/** Laufende oder nächste bevorstehende Reise (nicht archiviert) */
+export function nextTrip() {
+  const today = todayStr();
+  return state.data.trips.filter((t) => !t.archived && t.end >= today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+}
+function selectTripSilently(id) {
+  state.tripId = id;
+  try { localStorage.setItem('reisli.trip', id); } catch { /* privat */ }
+}
+
 function defaultTrip() {
   const today = todayStr();
   const active = state.data.trips.filter((t) => !t.archived);
@@ -436,6 +447,10 @@ const main = () => document.getElementById('main');
 export function render() {
   if (!state.data) return;
   const v = VIEWS.find((x) => x.id === state.view) || VIEWS[0];
+  if (v.id === 'heute') {
+    const n = nextTrip();
+    if (n && n.id !== state.tripId) selectTripSilently(n.id);
+  }
   renderChrome(v.tab || v.id);
   const el = v.render();
   main().replaceChildren(el);
@@ -495,7 +510,11 @@ function tripPicker() {
     menu.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
   };
-  const entry = (t) => h('button', { type: 'button', role: 'menuitem', class: 'tm-item' + (t.id === state.tripId ? ' on' : ''), onclick: () => { toggle(false); selectTrip(t.id); if (state.view === 'reise') go('plan'); } },
+  const entry = (t) => h('button', { type: 'button', role: 'menuitem', class: 'tm-item' + (t.id === state.tripId ? ' on' : ''), onclick: () => {
+    toggle(false);
+    // «Heute» zeigt immer die nächste Reise – eine andere Reise öffnet darum den Plan
+    if (state.view === 'reise' || (state.view === 'heute' && t.id !== nextTrip()?.id)) { selectTripSilently(t.id); go('plan'); } else selectTrip(t.id);
+  } },
     h('span', { class: 'tm-name' }, t.name),
     h('span', { class: 'tm-meta' }, fmtRange(t.start, t.end), tripStatus(t, today) ? h('span', { class: 'tm-status' }, tripStatus(t, today)) : null)
   );
