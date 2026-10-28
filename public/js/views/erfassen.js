@@ -1,7 +1,8 @@
 // Ansicht «Erfassen»: Unterwegs-Modus – Ausgaben in Sekunden erfassen (Betrag in Lokalwährung, Kategorie, fertig)
 import { h, chips, toast } from '../ui.js';
 import { state, trip, settings, saveItem, deleteItem, render, tripCurrencies, hasRate, personName, methodName } from '../app.js';
-import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, fmtDay, dayNumber, tripSummary, isStay, stayFor } from '../calc.js';
+import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, fmtDay, dayNumber, tripSummary, isStay, stayFor, dayCurrency } from '../calc.js';
+import { ensureRate } from './shared.js';
 import { editItem, catDot } from './item.js';
 import { renderPlan } from './plan.js';
 import { timeline } from './timeline.js';
@@ -41,7 +42,25 @@ export function renderErfassen() {
     const v = evalExpr(amount.value);
     preview.textContent = draft.cur !== 'CHF' && v ? (hasRate(draft.cur) ? '≈ CHF ' + fmt(toCHF(S, v, draft.cur)) : 'Kurs fehlt') : '';
   };
-  const curChips = chips(tripCurrencies().slice(0, 4).map((c) => ({ value: c, label: c })), draft.cur, (v) => { draft.cur = v; remember('cur.' + t.id, v); updatePreview(); }, 'small');
+  // Währungen: zuerst die des Tages und der Reise, CHF, dann die in dieser Reise schon benutzten (häufigste zuerst).
+  // Alle übrigen über «Andere …» – eine neu gewählte erscheint danach ebenfalls als Knopf.
+  const used = new Map();
+  for (const it of t.items) { const c = it.plan?.currency; if (c) used.set(c, (used.get(c) || 0) + 1); }
+  const quick = [...new Set([dayCurrency(t, draft.date), t.currency, 'CHF', ...[...used].sort((a, b) => b[1] - a[1]).map(([c]) => c), draft.cur].filter(Boolean))].slice(0, 6);
+  if (!quick.includes(draft.cur)) quick.push(draft.cur);
+  const pickCur = async (v) => {
+    if (!v) return;
+    draft.cur = v;
+    remember('cur.' + t.id, v);
+    if (!hasRate(v) && !state.offline) { try { await ensureRate(v); } catch { /* Kurs später */ } }
+    render();
+  };
+  const others = [...new Set([...tripCurrencies(), ...(state.data.knownCurrencies || [])])].filter((c) => !quick.includes(c)).sort();
+  const curChips = h('div', { class: 'row gap wrap cur-pick' },
+    chips(quick.map((c) => ({ value: c, label: c })), draft.cur, (v) => { draft.cur = v; remember('cur.' + t.id, v); updatePreview(); }, 'small'),
+    others.length ? h('select', { class: 'cur-more', 'aria-label': 'Andere Währung', onchange: (e) => pickCur(e.target.value) },
+      h('option', { value: '' }, 'Andere …'), others.map((c) => h('option', { value: c }, c))) : null
+  );
 
   const titles = [...new Set(t.items.map((it) => it.title))].slice(-80);
   const listId = 'titles-' + t.id;

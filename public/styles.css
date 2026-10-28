@@ -696,3 +696,5 @@ a.contact { color: var(--accent); }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem .7rem; }
 .grid3 .span-all { grid-column: 1 / -1; }
 @media (max-width: 420px) { .grid3 { grid-template-columns: 1fr; } }
+.cur-pick .chips { margin: 0; }
+.cur-more { border: 1px solid var(--line); background: var(--card); color: var(--ink-2); border-radius: 999px; padding: .3rem .6rem; font: inherit; font-size: .85rem; }
