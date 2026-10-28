@@ -91,7 +91,7 @@ a { color: var(--accent); }
   border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: .35rem .7rem; font-weight: 650;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1040px) {
   :root { --tabbar-h: 62px; }
   /* backdrop-filter würde die fixe Tab-Leiste an die Kopfzeile binden */
   .topbar { justify-content: space-between; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
@@ -635,7 +635,7 @@ tr.orphan .link { margin-left: .4rem; }
 .net-badge.off { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .net-badge.pending { color: var(--accent); }
 .net-badge.warn { background: var(--neg-bg); color: var(--neg); border-color: color-mix(in srgb, var(--neg) 35%, var(--line)); }
-@media (max-width: 760px) { .net-badge { margin-left: auto; } }
+@media (max-width: 1040px) { .net-badge { margin-left: auto; } }
 
 /* ---------- Heute ---------- */
 .heute { max-width: 720px; margin: 0 auto; }
@@ -710,3 +710,11 @@ a.contact { color: var(--accent); }
 .doc-valid.bad { color: var(--neg); font-weight: 650; }
 .doc-note { white-space: pre-wrap; color: var(--ink-2); }
 .docs.compact .doc-row { padding: .45rem 0; }
+
+/* Tab-Beschriftung: auf dem Handy kurze Varianten, damit bis zu 7 Reiter passen */
+.tab .tl-short { display: none; }
+@media (max-width: 1040px) {
+  .tab .tl { display: none; }
+  .tab .tl-short { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab { min-width: 0; font-size: .68rem; letter-spacing: -.01em; }
+}

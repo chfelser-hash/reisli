@@ -31,19 +31,20 @@ const ICONS = {
   erfassen: 'M12 5v14M5 12h14',
   offen: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
   auswertung: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  dokumente: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
   mehr: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 const VIEWS = [
   // «Heute» erscheint nur, wenn eine Reise läuft oder in Kürze beginnt
   { id: 'heute', label: 'Heute', render: () => renderHeute(), when: () => trip() && tripRunning(trip(), 2) },
   { id: 'plan', label: 'Plan', render: renderPlan },
-  { id: 'erfassen', label: 'Erfassen', render: renderErfassen },
+  { id: 'erfassen', label: 'Erfassen', short: 'Neu', render: renderErfassen },
   { id: 'offen', label: 'Offen', render: renderOffen },
-  { id: 'auswertung', label: 'Auswertung', render: renderAuswertung },
+  { id: 'auswertung', label: 'Auswertung', short: 'Analyse', render: renderAuswertung },
+  { id: 'dokumente', label: 'Dokumente', short: 'Papiere', render: () => renderDokumente() },
   { id: 'mehr', label: 'Mehr', render: renderMehr },
   // Ohne eigenen Tab (über ✎ im Plan erreichbar)
   { id: 'reise', label: 'Reise bearbeiten', render: renderReise, hidden: true, tab: 'plan' },
-  { id: 'dokumente', label: 'Reisedokumente', render: () => renderDokumente(), hidden: true, tab: 'mehr' },
 ];
 const icon = (id) => s('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': id === 'mehr' ? 3.2 : 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }, s('path', { d: ICONS[id] }));
 
@@ -410,7 +411,7 @@ function renderChrome(activeTab) {
   header.replaceChildren(
     h('a', { class: 'brand', href: '#plan' }, h('img', { class: 'logo', src: '/icons/icon.svg', alt: '' }), h('span', null, 'Reisli')),
     h('nav', { class: 'tabs' },
-      VIEWS.filter((v) => !v.hidden && (!v.when || v.when() || activeTab === v.id)).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', null, v.label)))
+      VIEWS.filter((v) => !v.hidden && (!v.when || v.when() || activeTab === v.id)).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', { class: 'tl' }, v.label), h('span', { class: 'tl-short' }, v.short || v.label)))
     ),
     netBadge(),
     tripPicker()
