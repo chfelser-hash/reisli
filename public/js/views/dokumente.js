@@ -181,10 +181,9 @@ async function editDocument(original) {
       toast(list.length === 1 ? 'Datei gespeichert' : `${list.length} Dateien gespeichert`);
     } catch (ex) { toast(ex.message, { error: true }); }
   } });
-  const listId = 'doc-people';
   const content = h('div', { class: 'form-grid' },
     h('label', null, 'Art', h('select', { onchange: (e) => (d.kind = e.target.value) }, DOC_KINDS.map(([k, label, icon]) => h('option', { value: k, selected: k === d.kind }, `${icon} ${label}`)))),
-    h('label', null, 'Person', h('input', { value: d.person, list: listId, placeholder: 'leer = für alle', oninput: (e) => (d.person = e.target.value) }), h('datalist', { id: listId }, people.map((p) => h('option', { value: p })))),
+    personField(d, people),
     h('label', { class: 'span2' }, 'Bezeichnung', h('input', { value: d.title, required: true, placeholder: 'z.B. Pass, PADI Advanced, DAN Europe', oninput: (e) => (d.title = e.target.value) })),
     h('label', null, 'Nummer', h('input', { value: d.number, autocomplete: 'off', placeholder: 'Pass-, Versicherten-, Brevetnummer', oninput: (e) => (d.number = e.target.value) })),
     h('label', null, 'Gültig bis', h('input', { type: 'date', value: d.validUntil, onchange: (e) => (d.validUntil = e.target.value) })),
@@ -210,6 +209,22 @@ async function editDocument(original) {
   ].filter(Boolean));
   render();
   return res;
+}
+
+/** Person: Auswahl aus allen Benutzern (und bisher verwendeten Namen), «für alle» oder frei eingeben (z.B. Kinder) */
+function personField(d, people) {
+  const OTHER = '\u0000andere';
+  const input = h('input', { value: d.person, placeholder: 'Name', hidden: true, oninput: (e) => (d.person = e.target.value.trim()) });
+  const sel = h('select', { onchange: (e) => {
+    const v = e.target.value;
+    input.hidden = v !== OTHER;
+    if (v === OTHER) { d.person = ''; input.value = ''; input.focus(); } else d.person = v;
+  } },
+    people.map((p) => h('option', { value: p, selected: p === d.person }, p)),
+    h('option', { value: '', selected: !d.person }, 'Für alle'),
+    h('option', { value: OTHER }, 'Andere Person …')
+  );
+  return h('label', null, 'Person', sel, input);
 }
 
 function syncLocal(doc) {
