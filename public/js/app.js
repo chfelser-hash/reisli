@@ -1,11 +1,13 @@
 // Hauptmodul: Daten laden, Anmeldung, Navigation, Synchronisation
 import { h, s, toast } from './ui.js';
-import { todayStr, rateOf, currencies } from './calc.js';
+import { todayStr, rateOf, currencies, fmtRange, daysBetween, dayNumber } from './calc.js';
 import { renderPlan } from './views/plan.js';
 import { renderErfassen } from './views/erfassen.js';
 import { renderOffen } from './views/offen.js';
 import { renderAuswertung } from './views/auswertung.js';
 import { renderMehr } from './views/mehr.js';
+import { renderReise } from './views/reise.js';
+import { newTripDialog } from './views/newtrip.js';
 
 export const state = {
   data: null, // { rev, trips, settings, user, users }
@@ -29,6 +31,8 @@ const VIEWS = [
   { id: 'offen', label: 'Offen', render: renderOffen },
   { id: 'auswertung', label: 'Auswertung', render: renderAuswertung },
   { id: 'mehr', label: 'Mehr', render: renderMehr },
+  // Ohne eigenen Tab (über ✎ im Plan erreichbar)
+  { id: 'reise', label: 'Reise bearbeiten', render: renderReise, hidden: true, tab: 'plan' },
 ];
 const icon = (id) => s('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': id === 'mehr' ? 3.2 : 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }, s('path', { d: ICONS[id] }));
 
@@ -135,34 +139,72 @@ const main = () => document.getElementById('main');
 
 export function render() {
   if (!state.data) return;
-  renderChrome();
   const v = VIEWS.find((x) => x.id === state.view) || VIEWS[0];
+  renderChrome(v.tab || v.id);
   const el = v.render();
   main().replaceChildren(el);
   const t = trip();
   document.title = `${v.label}${t ? ' · ' + t.name : ''} · Reisli`;
 }
 
-function renderChrome() {
-  const trips = state.data.trips;
+function renderChrome(activeTab) {
   const header = document.getElementById('topbar');
-  const active = trips.filter((t) => !t.archived || t.id === state.tripId).sort((a, b) => a.start.localeCompare(b.start));
   header.replaceChildren(
     h('a', { class: 'brand', href: '#plan' }, h('img', { class: 'logo', src: '/icons/icon.svg', alt: '' }), h('span', null, 'Reisli')),
     h('nav', { class: 'tabs' },
-      VIEWS.map((v) => h('a', { href: '#' + v.id, class: 'tab' + (state.view === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', null, v.label)))
+      VIEWS.filter((v) => !v.hidden).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', null, v.label)))
     ),
-    trips.length
-      ? h('label', { class: 'trip-select' },
-          h('span', { class: 'sr' }, 'Reise'),
-          h('select', { onchange: (e) => (e.target.value === '__new' ? go('mehr', { newTrip: true }) : selectTrip(e.target.value)), 'aria-label': 'Reise' },
-            active.map((t) => h('option', { value: t.id, selected: t.id === state.tripId }, t.name)),
-            h('option', { value: '__new' }, '+ Neue Reise …')
-          )
-        )
-      : h('span')
+    tripPicker()
   );
 }
+
+// ---------- Reise-Auswahl (eigenes Menü mit Zeitspanne) ----------
+function tripStatus(t, today) {
+  if (today < t.start) {
+    const k = daysBetween(today, t.start);
+    return k === 1 ? 'morgen' : `in ${k} Tagen`;
+  }
+  if (today <= t.end) return `läuft · Tag ${dayNumber(t, today)}`;
+  return '';
+}
+
+function tripPicker() {
+  const trips = state.data.trips;
+  const today = todayStr();
+  const cur = trip();
+  const menu = h('div', { class: 'trip-menu', role: 'menu', hidden: true });
+  const toggle = (open = menu.hidden) => {
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  const entry = (t) => h('button', { type: 'button', role: 'menuitem', class: 'tm-item' + (t.id === state.tripId ? ' on' : ''), onclick: () => { toggle(false); selectTrip(t.id); if (state.view === 'reise') go('plan'); } },
+    h('span', { class: 'tm-name' }, t.name),
+    h('span', { class: 'tm-meta' }, fmtRange(t.start, t.end), tripStatus(t, today) ? h('span', { class: 'tm-status' }, tripStatus(t, today)) : null)
+  );
+  const group = (label, list) => (list.length ? [h('div', { class: 'tm-group' }, label), ...list.map(entry)] : []);
+  const active = trips.filter((t) => !t.archived);
+  menu.append(
+    ...group('Laufend & kommend', active.filter((t) => t.end >= today).sort((a, b) => a.start.localeCompare(b.start))),
+    ...group('Vergangen', active.filter((t) => t.end < today).sort((a, b) => b.start.localeCompare(a.start))),
+    ...group('Archiv', trips.filter((t) => t.archived).sort((a, b) => b.start.localeCompare(a.start))),
+    h('button', { type: 'button', role: 'menuitem', class: 'tm-new', onclick: () => { toggle(false); newTripDialog('leer'); } }, '+ Neue Reise …')
+  );
+  const btn = h('button', { type: 'button', class: 'trip-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => { e.stopPropagation(); toggle(); } },
+    cur
+      ? h('span', { class: 'tb-text' }, h('span', { class: 'tb-name' }, cur.name), h('span', { class: 'tb-range' }, fmtRange(cur.start, cur.end)))
+      : h('span', { class: 'tb-text' }, h('span', { class: 'tb-name' }, trips.length ? 'Reise wählen' : 'Neue Reise')),
+    h('span', { class: 'tb-caret', 'aria-hidden': 'true' }, '▾')
+  );
+  return h('div', { class: 'trip-picker' }, btn, menu);
+}
+
+// Menü schliessen bei Klick daneben oder Escape
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.trip-picker')) document.querySelectorAll('.trip-menu').forEach((m) => (m.hidden = true));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.trip-menu').forEach((m) => (m.hidden = true));
+});
 
 // ---------- Anmeldung ----------
 async function showLogin(needsSetup) {

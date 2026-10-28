@@ -118,6 +118,13 @@ export const weekday = (s) => WEEKDAYS[new Date(toUTC(s)).getUTCDay()];
 export const fmtDate = (s) => (s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : '');
 export const fmtDateShort = (s) => (s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.` : '');
 export const fmtDay = (s) => (s ? `${weekday(s)} ${fmtDateShort(s)}` : '');
+/** Zeitspanne kompakt: 06.–27.02.2027 · 28.01.–05.02.2027 · 28.12.2026–05.01.2027 */
+export function fmtRange(a, b) {
+  if (!a || !b) return fmtDate(a || b);
+  if (a.slice(0, 4) !== b.slice(0, 4)) return `${fmtDate(a)}–${fmtDate(b)}`;
+  if (a.slice(0, 7) !== b.slice(0, 7)) return `${fmtDateShort(a)}–${fmtDate(b)}`;
+  return `${a.slice(8, 10)}.–${fmtDate(b)}`;
+}
 
 export function tripDates(trip) {
   if (!isDate(trip.start) || !isDate(trip.end) || trip.end < trip.start) return [];
@@ -523,6 +530,35 @@ export function copyTrip(trip, { name, start, keepItems = true, newId }) {
         }))
       : [],
     createdAt: new Date().toISOString(),
+  };
+}
+
+// ---------- Posten zusammenführen ----------
+
+/**
+ * Führt «other» in «target» zusammen (z.B. Anzahlung + Restzahlung als zwei Posten → ein Posten mit zwei Zahlungen).
+ * Planbetrag = Summe beider, umgerechnet in die Währung von target. Zahlungen, To-dos, Belege und Notizen werden vereint.
+ * Liefert den neuen target (other wird vom Aufrufer gelöscht).
+ */
+export function mergeItems(settings, target, other) {
+  const cur = target.plan?.currency || 'CHF';
+  const oCur = other.plan?.currency || 'CHF';
+  const oAmt = n(other.plan?.amount);
+  const add = oCur === cur ? oAmt : fromCHF(settings, toCHF(settings, oAmt, oCur), cur);
+  const join = (a, b) => [a, b].filter((x) => x && x.trim()).join(' · ');
+  return {
+    ...target,
+    plan: { amount: round2(n(target.plan?.amount) + add), currency: cur },
+    reserved: !!(target.reserved || other.reserved),
+    dueDate: target.dueDate || other.dueDate || '',
+    dueMethodId: target.dueMethodId || other.dueMethodId || '',
+    payments: [...(target.payments || []), ...(other.payments || [])],
+    todos: [...(target.todos || []), ...(other.todos || [])],
+    files: [...(target.files || []), ...(other.files || [])],
+    note: join(target.note, other.note),
+    detail: target.detail || other.detail || '',
+    link: target.link || other.link || '',
+    done: false,
   };
 }
 

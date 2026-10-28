@@ -1,6 +1,6 @@
 // Liest eine Ferien-Excel (Format Ferien2027.xlsm) und schreibt eine Reisli-Reise als JSON.
 // Die Datei kann danach in der App unter «Mehr → Sicherung → Einspielen» hochgeladen werden.
-// Einfacher ist meist der direkte Weg in der App: «Mehr → Excel importieren».
+// Einfacher ist meist der direkte Weg in der App: Reise-Auswahl → «+ Neue Reise» → «Aus Excel».
 //
 //   npm run import-excel -- "C:\Pfad\zu\Ferien2027.xlsm"
 import fs from 'node:fs';

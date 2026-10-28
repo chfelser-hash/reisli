@@ -179,8 +179,8 @@ function split(t, today) {
   if (!t.split?.enabled) {
     return h('section', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, 'Kostenaufteilung')),
-      h('p', { class: 'muted' }, 'Reist ihr mit anderen und wollt Kosten aufteilen? Unter «Mehr → Reise» die Aufteilung einschalten und Teilnehmende erfassen. Bei jeder Zahlung lässt sich dann festhalten, wer bezahlt hat.'),
-      h('button', { class: 'btn', onclick: () => go('mehr', { section: 'split' }) }, 'Aufteilung einrichten')
+      h('p', { class: 'muted' }, 'Reist ihr mit anderen und wollt Kosten aufteilen? Unter «Reise bearbeiten» (✎ im Plan) die Aufteilung einschalten und Teilnehmende erfassen. Bei jeder Zahlung lässt sich dann festhalten, wer bezahlt hat.'),
+      h('button', { class: 'btn', onclick: () => go('reise', { section: 'split' }) }, 'Aufteilung einrichten')
     );
   }
   const st = settlement(settings(), t, today);

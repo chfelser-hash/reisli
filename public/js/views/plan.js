@@ -2,10 +2,12 @@
 import { h, modal, toast } from '../ui.js';
 import { state, trip, settings, go, saveDay, render } from '../app.js';
 import {
-  tripDates, tripSummary, itemCalc, fmt, fmt0, fmtCur, fmtDay, dayNumber, daysBetween, todayStr, isStay,
-  nights, stayFor, placeFor, allowanceDates, STATUS,
+  tripDates, tripSummary, itemCalc, fmt, fmt0, fmtCur, fmtDay, fmtRange, dayNumber, daysBetween, todayStr, isStay,
+  nights, stayFor, placeFor, STATUS,
 } from '../calc.js';
 import { editItem, blankItem, catDot } from './item.js';
+import { timeline } from './timeline.js';
+import { newTripDialog } from './newtrip.js';
 
 let mode = (() => { try { return localStorage.getItem('reisli.planMode') || 'tage'; } catch { return 'tage'; } })();
 let onlyCosts = false;
@@ -30,7 +32,13 @@ export function renderPlan() {
   if (mode === 'uebersicht') view.append(overviewTable(t, sum, dates));
   else {
     const list = h('div', { class: 'days' }, dates.map((d) => dayCard(t, sum, d, today)));
-    view.append(list);
+    // Zeitstrahl als Sprungnavigation (bleibt beim Scrollen oben)
+    const tl = timeline(t, sum, state.params.day || null, (d) => {
+      for (const b of tl.querySelectorAll('.tl-day')) b.classList.toggle('on', b.dataset.date === d);
+      document.getElementById('d-' + d)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    tl.classList.add('sticky');
+    view.append(tl, list);
     // Während der Reise direkt zum heutigen Tag springen
     const target = state.params.day || (today > t.start && today <= t.end ? today : null);
     if (target) setTimeout(() => document.getElementById('d-' + target)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
@@ -46,8 +54,8 @@ function welcome() {
       h('h1', null, 'Willkommen bei Reisli'),
       h('p', { class: 'muted' }, 'Lege deine erste Reise an oder übernimm eine bestehende Ferien-Excel.'),
       h('div', { class: 'row gap wrap center-row' },
-        h('button', { class: 'btn primary big', onclick: () => go('mehr', { newTrip: true }) }, '+ Neue Reise'),
-        h('button', { class: 'btn big', onclick: () => go('mehr', { section: 'import' }) }, 'Excel importieren')
+        h('button', { class: 'btn primary big', onclick: () => newTripDialog('leer') }, '+ Neue Reise'),
+        h('button', { class: 'btn big', onclick: () => newTripDialog('excel') }, 'Excel importieren')
       )
     )
   );
@@ -68,10 +76,12 @@ function tripHead(t, sum, today) {
   return h('section', { class: 'card trip-head' },
     h('div', { class: 'th-top' },
       h('div', null,
-        h('h1', null, t.name),
-        h('p', { class: 'muted' }, `${fmtDay(t.start)}${t.start.slice(0, 4)} – ${fmtDay(t.end)}${t.end.slice(0, 4)} · ${tripDates(t).length} Tage`)
+        h('h1', null, t.name, t.archived ? h('span', { class: 'tag-arch' }, 'archiviert') : null),
+        h('p', { class: 'muted' }, `${fmtRange(t.start, t.end)} · ${tripDates(t).length} Tage`)
       ),
-      h('span', { class: 'badge' }, countdown(t, today))
+      h('div', { class: 'th-actions' },
+        h('span', { class: 'badge' }, countdown(t, today)),
+        h('button', { class: 'icon-btn', 'aria-label': 'Reise bearbeiten', title: 'Reise bearbeiten: Daten, Pauschalen, Aufteilung', onclick: () => go('reise') }, '✎'))
     ),
     h('div', { class: 'kpis four' },
       kpi('Prognose total', 'CHF ' + fmt0(sum.forecast), sum.allowance ? `inkl. ${fmt0(sum.allowance)} Pauschalen` : ''),
@@ -80,7 +90,7 @@ function tripHead(t, sum, today) {
       kpi('Noch offen', 'CHF ' + fmt0(sum.open + sum.allowance), sum.open ? `${fmt0(sum.open)} Posten + ${fmt0(sum.allowance)} Pauschalen` : '')
     ),
     h('span', { class: 'bar big', title: `${fmt0(pct)} % bezahlt` }, h('span', { style: { width: pct + '%' } })),
-    sum.missingRates ? h('p', { class: 'warn' }, `${sum.missingRates} Posten ohne Wechselkurs – unter Mehr → Währungen nachtragen.`) : null
+    sum.missingRates ? h('p', { class: 'warn' }, `${sum.missingRates} Posten ohne Wechselkurs – unter Mehr → Währungen & Kurse nachtragen.`) : null
   );
 }
 
@@ -212,23 +222,21 @@ function overviewTable(t, sum, dates) {
     const stay = stayFor(t, d);
     const costs = sum.byDay.get(d) || { total: 0, allowance: 0 };
     const program = day.title || t.items.filter((it) => it.date === d && !isStay(it)).map((it) => it.title).slice(0, 2).join(', ');
-    const skipped = (t.allowances || []).filter((a) => !allowanceDates(t, a).includes(d) && (a.per !== 'nacht' || d < t.end));
     return h('tr', { class: 'clickable', onclick: () => { mode = 'tage'; state.params.day = d; render(); } },
       h('td', { class: 'num muted' }, dayNumber(t, d)),
       h('td', null, fmtDay(d)),
       h('td', { class: 'wrap-cell' }, program),
       h('td', null, placeFor(t, null, d)),
       h('td', { class: 'wrap-cell' }, stay ? stay.title : ''),
-      h('td', { class: 'num' }, fmt0(costs.total + costs.allowance)),
-      h('td', { class: 'wrap-cell muted small' }, [day.note, skipped.length ? 'ohne ' + skipped.map((a) => a.label).join(', ') : ''].filter(Boolean).join(' · '))
+      h('td', { class: 'num' }, fmt0(costs.total + costs.allowance))
     );
   });
   return h('section', { class: 'card' },
     h('div', { class: 'table-scroll' },
       h('table', { class: 'overview' },
-        h('thead', null, h('tr', null, h('th', { class: 'num' }, 'Tag'), h('th', null, 'Datum'), h('th', null, 'Programm'), h('th', null, 'Ort'), h('th', null, 'Übernachtung'), h('th', { class: 'num' }, 'CHF'), h('th', null, 'Notiz'))),
+        h('thead', null, h('tr', null, h('th', { class: 'num' }, 'Tag'), h('th', null, 'Datum'), h('th', null, 'Programm'), h('th', null, 'Ort'), h('th', null, 'Übernachtung'), h('th', { class: 'num' }, 'CHF'))),
         h('tbody', null, rows),
-        h('tfoot', null, h('tr', null, h('td'), h('th', { colspan: 4 }, 'Total (inkl. Pauschalen)'), h('td', { class: 'num' }, fmt0(sum.forecast)), h('td')))
+        h('tfoot', null, h('tr', null, h('td'), h('th', { colspan: 4 }, 'Total (inkl. Pauschalen)'), h('td', { class: 'num' }, fmt0(sum.forecast))))
       )
     )
   );

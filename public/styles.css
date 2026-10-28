@@ -475,3 +475,78 @@ input.short { width: 7rem; flex: none; }
   .card { box-shadow: none; break-inside: avoid; }
   .day.past { opacity: 1; }
 }
+
+/* ---------- Reise-Auswahl ---------- */
+.trip-picker { position: relative; }
+.trip-btn {
+  display: flex; align-items: center; gap: .5rem; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 12px; padding: .3rem .7rem; cursor: pointer; text-align: left; min-height: 42px; max-width: 15rem;
+}
+.trip-btn:hover { border-color: var(--ink-3); }
+.tb-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.tb-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-range { font-size: .75rem; color: var(--ink-3); white-space: nowrap; }
+.tb-caret { color: var(--ink-3); font-size: .8rem; }
+.trip-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: min(320px, 92vw); max-height: 70vh; overflow: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.18); padding: .35rem;
+}
+.tm-group { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: .6rem .6rem .25rem; }
+.tm-item { display: flex; flex-direction: column; width: 100%; border: 0; background: none; text-align: left; padding: .5rem .6rem; border-radius: 9px; cursor: pointer; color: var(--ink); font: inherit; }
+.tm-item:hover { background: var(--line-2); }
+.tm-item.on { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.tm-name { font-weight: 650; }
+.tm-meta { font-size: .8rem; color: var(--ink-3); display: flex; gap: .5rem; flex-wrap: wrap; }
+.tm-status { color: var(--accent); font-weight: 650; }
+.tm-new { display: block; width: 100%; margin-top: .3rem; border: 1px dashed var(--line); background: none; border-radius: 9px; padding: .55rem; cursor: pointer; color: var(--accent); font-weight: 650; }
+.tm-new:hover { border-color: var(--accent); }
+@media (max-width: 760px) { .trip-btn { max-width: 11rem; } }
+
+/* ---------- Kopf der Reise ---------- */
+.th-actions { display: flex; align-items: center; gap: .5rem; }
+.tag-arch { font-size: .75rem; font-weight: 600; margin-left: .6rem; padding: .1rem .45rem; border-radius: 6px; background: var(--line-2); color: var(--ink-3); vertical-align: middle; }
+
+/* ---------- Zeitstrahl ---------- */
+.timeline { display: flex; align-items: stretch; gap: .3rem; }
+.timeline.sticky { position: sticky; top: 3.8rem; z-index: 10; background: var(--bg); padding: .35rem 0; margin: -.35rem 0; }
+.tl-strip { position: relative; display: flex; gap: .4rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; flex: 1; padding: 2px; }
+.tl-strip::-webkit-scrollbar { display: none; }
+.tl-day {
+  flex: 0 0 auto; width: 6.2rem; scroll-snap-align: center; display: flex; flex-direction: column; gap: .05rem; align-items: flex-start;
+  border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: .4rem .55rem; cursor: pointer; text-align: left; color: var(--ink); font: inherit;
+}
+.tl-day:hover { border-color: var(--ink-3); }
+.tl-day.past { background: color-mix(in srgb, var(--card) 70%, var(--bg)); }
+.tl-day.today { border-color: var(--accent); }
+.tl-day.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tl-no { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.tl-day.on .tl-no { color: inherit; opacity: .85; }
+.tl-date { font-weight: 700; font-size: .9rem; white-space: nowrap; }
+.tl-place { font-size: .75rem; color: var(--ink-3); width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-day.on .tl-place { color: inherit; opacity: .8; }
+.tl-sum { font-size: .78rem; font-weight: 650; display: flex; align-items: center; gap: .3rem; }
+.tl-dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--s-allow); display: inline-block; }
+.tl-nav { flex: none; width: 30px; border: 1px solid var(--line); background: var(--card); border-radius: 10px; cursor: pointer; font-size: 1.2rem; color: var(--ink-2); }
+.tl-nav:hover { border-color: var(--ink-3); color: var(--ink); }
+@media (max-width: 760px) {
+  .tl-nav { display: none; }
+  .timeline.sticky { top: 3.8rem; }
+  .tl-day { width: 5.4rem; }
+}
+.plan .day { scroll-margin-top: 10.5rem; }
+
+/* ---------- Erfassen ---------- */
+.chip.fav { border-left: 4px solid var(--c, var(--line)); font-weight: 600; color: var(--ink); }
+
+/* ---------- Neue Reise / Zusammenführen ---------- */
+.wide-segs { display: flex; flex-wrap: wrap; }
+.wide-segs .seg { flex: 1; }
+.newtrip { min-height: 18rem; }
+.merge-list { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow: auto; border: 1px solid var(--line-2); border-radius: 10px; }
+.merge-list li { border-bottom: 1px solid var(--line-2); }
+.merge-list label.check { padding: .45rem .6rem; color: var(--ink); gap: .6rem; }
+.merge-list input[type="radio"] { width: 18px; height: 18px; min-height: 0; flex: none; accent-color: var(--accent); }
+.merge-preview { background: var(--bg); border-radius: 10px; padding: .6rem .8rem; }
+.merge-preview p { margin: 0 0 .3rem; }
+.merge-preview ul { margin: 0; padding-left: 1.1rem; }
+.reise h1 { font-size: 1.2rem; }

@@ -1,12 +1,13 @@
 // Ansicht «Erfassen»: Unterwegs-Modus – Ausgaben in Sekunden erfassen (Betrag in Lokalwährung, Kategorie, fertig)
 import { h, chips, toast } from '../ui.js';
 import { state, trip, settings, saveItem, deleteItem, render, tripCurrencies, hasRate, personName, methodName } from '../app.js';
-import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, addDays, fmtDay, tripSummary, isStay, stayFor } from '../calc.js';
+import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, fmtDay, dayNumber, tripSummary, isStay, stayFor } from '../calc.js';
 import { editItem, catDot } from './item.js';
 import { renderPlan } from './plan.js';
+import { timeline } from './timeline.js';
 
 // Eingaben überleben ein Neuzeichnen (z.B. nach dem Speichern)
-const draft = { date: null, cur: null, catId: 'essen', methodId: null, paid: true, paidBy: null, members: null };
+const draft = { date: null, cur: null, catId: 'essen', methodId: null, paid: true, paidBy: null, members: null, amount: '', title: '' };
 const remember = (k, v) => { try { localStorage.setItem('reisli.' + k, v); } catch { /* egal */ } };
 const recall = (k) => { try { return localStorage.getItem('reisli.' + k); } catch { return null; } };
 
@@ -31,9 +32,11 @@ export function renderErfassen() {
       const v = evalExpr(amount.value);
       amount.classList.toggle('invalid', Number.isNaN(v));
       updatePreview();
+      draft.amount = amount.value;
       state.busy = !!amount.value;
     },
   });
+  amount.value = draft.amount;
   const updatePreview = () => {
     const v = evalExpr(amount.value);
     preview.textContent = draft.cur !== 'CHF' && v ? (hasRate(draft.cur) ? '≈ CHF ' + fmt(toCHF(S, v, draft.cur)) : 'Kurs fehlt') : '';
@@ -42,12 +45,19 @@ export function renderErfassen() {
 
   const titles = [...new Set(t.items.map((it) => it.title))].slice(-80);
   const listId = 'titles-' + t.id;
-  const title = h('input', { placeholder: 'Wofür? (leer = Kategorie)', list: listId, autocomplete: 'off' });
+  const title = h('input', { placeholder: 'Wofür? (leer = Kategorie)', list: listId, autocomplete: 'off', value: draft.title, oninput: (e) => (draft.title = e.target.value) });
 
-  const dateInput = h('input', { type: 'date', value: draft.date, min: t.start, max: t.end, onchange: (e) => { draft.date = e.target.value; render(); } });
-  const quick = inTrip ? h('div', { class: 'quick-dates' },
-    h('button', { type: 'button', class: 'chip' + (draft.date === today ? ' on' : ''), onclick: () => { draft.date = today; render(); } }, 'Heute'),
-    today > t.start ? h('button', { type: 'button', class: 'chip' + (draft.date === addDays(today, -1) ? ' on' : ''), onclick: () => { draft.date = addDays(today, -1); render(); } }, 'Gestern') : null
+  // Schnellknöpfe: die häufigsten unterwegs erfassten Ausgaben dieser Reise
+  const catChips = chips(S.categories.map((c) => ({ value: c.id, label: c.name, color: c.color })), draft.catId, (v) => (draft.catId = v), 'small cats');
+  const favs = favorites(t);
+  const quickBox = favs.length ? h('div', { class: 'field' },
+    h('span', { class: 'label' }, 'Schnell'),
+    h('div', { class: 'chips' }, favs.map((f) => h('button', { type: 'button', class: 'chip fav', style: { '--c': S.categories.find((c) => c.id === f.catId)?.color }, onclick: () => {
+      title.value = draft.title = f.title;
+      draft.catId = f.catId;
+      catChips.setValue(f.catId);
+      amount.focus();
+    } }, f.title)))
   ) : null;
 
   const paidBox = h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: draft.paid, onchange: (e) => { draft.paid = e.target.checked; methodWrap.hidden = !draft.paid; } }), 'schon bezahlt');
@@ -86,6 +96,7 @@ export function renderErfassen() {
       };
       try {
         const saved = await saveItem(item);
+        draft.amount = draft.title = '';
         state.busy = false;
         render();
         toast(`${fmtCur(v, cur)} · ${item.title} gespeichert`, { action: { label: 'Rückgängig', fn: async () => { await deleteItem(saved.id); render(); } } });
@@ -95,12 +106,11 @@ export function renderErfassen() {
       }
     },
   },
-    h('div', { class: 'entry-head' }, h('h2', null, 'Ausgabe erfassen'), quick),
-    h('label', null, 'Datum', dateInput),
+    h('div', { class: 'entry-head' }, h('h2', null, 'Ausgabe erfassen'), h('span', { class: 'muted' }, `${fmtDay(draft.date)} · Tag ${dayNumber(t, draft.date)}`)),
     h('div', { class: 'amount-row' }, amount, preview),
     curChips,
-    h('div', { class: 'field' }, h('span', { class: 'label' }, 'Kategorie'),
-      chips(S.categories.map((c) => ({ value: c.id, label: c.name, color: c.color })), draft.catId, (v) => (draft.catId = v), 'small cats')),
+    quickBox,
+    h('div', { class: 'field' }, h('span', { class: 'label' }, 'Kategorie'), catChips),
     h('div', { class: 'field' }, title, h('datalist', { id: listId }, titles.map((x) => h('option', { value: x })))),
     h('div', { class: 'field' }, paidBox),
     methodWrap,
@@ -109,7 +119,25 @@ export function renderErfassen() {
     h('button', { class: 'btn primary big block', type: 'submit' }, 'Speichern')
   );
 
-  return h('div', { class: 'view erfassen' }, h('div', { class: 'cols' }, h('div', { class: 'col-form' }, form), dayPanel(t, draft.date, today)));
+  const sum = tripSummary(S, t, today);
+  return h('div', { class: 'view erfassen' },
+    timeline(t, sum, draft.date, (d) => { draft.date = d; render(); }),
+    h('div', { class: 'cols' }, h('div', { class: 'col-form' }, form), dayPanel(t, draft.date, today)));
+}
+
+/** Häufigste unterwegs erfasste Ausgaben (Titel + Kategorie), höchstens 6 */
+function favorites(t) {
+  const map = new Map();
+  for (const it of t.items) {
+    if (isStay(it) || !(it.payments || []).some((p) => p.date)) continue;
+    const k = it.title.trim().toLowerCase() + '|' + it.catId;
+    const e = map.get(k) || { title: it.title.trim(), catId: it.catId, n: 0, last: '' };
+    e.n++;
+    if ((it.createdAt || '') > e.last) e.last = it.createdAt || '';
+    map.set(k, e);
+  }
+  const cats = new Set(settings().categories.map((c) => c.name.toLowerCase()));
+  return [...map.values()].filter((e) => !cats.has(e.title.toLowerCase()) || e.n > 1).sort((a, b) => b.n - a.n || b.last.localeCompare(a.last)).slice(0, 6);
 }
 
 /** Rechte Spalte: was an diesem Tag schon erfasst ist, inkl. Tagesbudget */

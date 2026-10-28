@@ -156,3 +156,21 @@ test('CSV-Export und To-do-Liste', () => {
   assert.equal(todoList(trip)[0].todo.text, 'Sitzplatz');
   assert.equal(addDays('2027-02-28', 1), '2027-03-01');
 });
+
+test('Zusammenführen: Anzahlung in CHF + Rest in THB', async () => {
+  const { mergeItems, itemCalc, fmtRange } = await import('../public/js/calc.js');
+  const an = item({ title: 'Anzahlung Tauchen', plan: { amount: 300, currency: 'CHF' }, payments: [{ amount: 300, currency: 'CHF', chf: 300 }], note: 'per FlyWire' });
+  const rest = item({ title: 'Tauchen', plan: { amount: 15000, currency: 'THB' }, payWhere: 'vorort' });
+  const m = mergeItems(settings, rest, an);
+  assert.equal(m.plan.currency, 'THB');
+  assert.equal(m.plan.amount, 27000);
+  assert.equal(m.payments.length, 1);
+  const c = itemCalc(settings, m);
+  assert.equal(c.status, 'angezahlt');
+  assert.equal(c.open, 15000);
+  assert.equal(c.totalCHF, 675);
+  assert.equal(m.note, 'per FlyWire');
+  assert.equal(fmtRange('2027-02-06', '2027-02-27'), '06.–27.02.2027');
+  assert.equal(fmtRange('2027-01-28', '2027-02-05'), '28.01.–05.02.2027');
+  assert.equal(fmtRange('2026-12-28', '2027-01-05'), '28.12.2026–05.01.2027');
+});

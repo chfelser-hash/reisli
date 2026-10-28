@@ -1,7 +1,7 @@
 // Dialog zum Erfassen und Bearbeiten eines Postens (inkl. Zahlungen, Aufteilung, To-dos, Belege)
-import { h, modal, chips, toast, confirmDialog } from '../ui.js';
+import { h, modal, chips, toast, confirmDialog, closeDialogOf } from '../ui.js';
 import { state, trip, settings, saveItem, deleteItem, api, render, tripCurrencies, cat, hasRate } from '../app.js';
-import { evalExpr, itemCalc, fmt, fmtCur, toCHF, round2, todayStr, isDate, addDays, nights, STATUS } from '../calc.js';
+import { evalExpr, itemCalc, fmt, fmtCur, fmtDay, toCHF, round2, todayStr, isDate, addDays, nights, daysBetween, mergeItems, STATUS } from '../calc.js';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -293,6 +293,17 @@ export async function editItem(original, opts = {}) {
       filesEl,
       it.files.length ? null : h('p', { class: 'hint' }, 'PDF, Fotos von Quittungen usw. Sie bleiben auf dem Server (NAS).')
     ),
+    !isNew ? h('section', { class: 'ed-sec' },
+      h('div', { class: 'row gap wrap' },
+        h('span', { class: 'muted small grow' }, 'Doppelt erfasst oder Anzahlung und Rest als zwei Posten?'),
+        h('button', { type: 'button', class: 'btn small', onclick: async (e) => {
+          if (!validate()) return;
+          const merged = await mergeDialog(it);
+          if (!merged) return;
+          saved = merged;
+          closeDialogOf(e.target);
+        } }, 'Mit anderem Posten zusammenführen …'))
+    ) : null,
     err
   );
   preview();
@@ -366,6 +377,62 @@ export async function quickPay(item) {
   await saveItem({ ...item, payments: [...(item.payments || []), p] });
   toast('Zahlung gespeichert');
   render();
+}
+
+/**
+ * Auswahl eines zweiten Postens, der in «it» zusammengeführt wird. Ähnliche Titel und nahe Daten zuerst.
+ * Speichert zuerst die aktuellen Änderungen an «it». Liefert den zusammengeführten Posten oder null.
+ */
+async function mergeDialog(it) {
+  const t = trip();
+  const S = settings();
+  const words = new Set(it.title.toLowerCase().split(/[^a-zäöü0-9]+/).filter((w) => w.length > 3));
+  const score = (x) => {
+    const common = x.title.toLowerCase().split(/[^a-zäöü0-9]+/).filter((w) => words.has(w)).length;
+    return common * 100 - Math.abs(daysBetween(it.date, x.date)) - (x.catId === it.catId ? 0 : 20);
+  };
+  const others = t.items.filter((x) => x.id !== it.id).sort((a, b) => score(b) - score(a));
+  let pick = null;
+  const preview = h('div', { class: 'merge-preview' });
+  const showPreview = () => {
+    if (!pick) return preview.replaceChildren(h('p', { class: 'hint' }, 'Posten wählen, der in diesen hier übernommen wird.'));
+    const m = mergeItems(S, it, pick);
+    const c = itemCalc(S, m);
+    preview.replaceChildren(
+      h('p', null, h('strong', null, it.title), ' übernimmt ', h('strong', null, pick.title), '. Danach:'),
+      h('ul', { class: 'small' },
+        h('li', null, `Planbetrag ${fmtCur(m.plan.amount, m.plan.currency)} (≈ CHF ${fmt(c.planCHF)})`),
+        h('li', null, `${m.payments.length} Zahlung(en), ${c.label}`),
+        m.files.length ? h('li', null, `${m.files.length} Beleg(e)`) : null,
+        h('li', null, `«${pick.title}» wird entfernt`)
+      )
+    );
+  };
+  const list = h('ul', { class: 'merge-list' }, others.slice(0, 40).map((x) => {
+    const c = itemCalc(S, x);
+    const li = h('li', null, h('label', { class: 'check' },
+      h('input', { type: 'radio', name: 'merge', onchange: () => { pick = x; showPreview(); } }),
+      h('span', { class: 'grow' }, h('strong', null, x.title), h('span', { class: 'muted small' }, ` ${fmtDay(x.date)}`)),
+      h('span', { class: 'small' }, c.hasCost ? `${fmtCur(x.plan.amount, x.plan.currency)} · ${c.label}` : 'ohne Betrag')
+    ));
+    return li;
+  }));
+  showPreview();
+  const r = await modal('Posten zusammenführen', h('div', { class: 'stack' }, list, preview), [
+    { label: 'Abbrechen', value: null },
+    { label: 'Zusammenführen', primary: true, onClick: () => (pick ? 'ok' : false) },
+  ]);
+  if (r !== 'ok' || !pick) return null;
+  try {
+    const cur = await saveItem(it);
+    const res = await api('POST', `/api/trips/${t.id}/items/${cur.id}/merge`, { otherId: pick.id });
+    t.items = t.items.filter((x) => x.id !== pick.id).map((x) => (x.id === cur.id ? res.item : x));
+    toast('Zusammengeführt');
+    return res.item;
+  } catch (ex) {
+    toast(ex.message, { error: true });
+    return null;
+  }
 }
 
 export const catDot = (id) => h('span', { class: 'dot', style: { '--c': cat(id).color }, title: cat(id).name });

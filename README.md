@@ -3,14 +3,15 @@
 Ferienbudget als Web-App – Nachfolger der Ferien-Excel, Geschwister vom [Kässeli](https://github.com/chfelser-hash/kaesseli).
 Läuft im Browser auf Windows und Android (installierbar als App), die Daten liegen auf der eigenen Synology NAS.
 
-- **Plan** – Reiseablauf Tag für Tag: Programm, Ort, Unterkunft (über mehrere Nächte), Posten mit Status und Betrag in Lokalwährung + CHF, Pauschalen. Umschaltbar auf eine kompakte **Übersicht** wie im Excel. Oben: Prognose total, pro Person, bezahlt, noch offen, Countdown.
-- **Erfassen** – Unterwegs-Modus: Betrag (darf gerechnet werden: `300+150`), Währung, Kategorie, fertig. Zeigt das Tagesbudget («Essen: 23 von 80 CHF»).
+- **Reise-Auswahl** (oben rechts) – Name und Zeitspanne, gruppiert nach laufend/kommend, vergangen und Archiv. «+ Neue Reise» öffnet ein eigenes Fenster: leer, als Kopie einer bestehenden Reise oder aus der Excel.
+- **Plan** – Reiseablauf Tag für Tag: Programm, Ort, Unterkunft (über mehrere Nächte), Posten mit Status und Betrag in Lokalwährung + CHF, Pauschalen. Ein **Zeitstrahl** springt zu jedem Tag. Umschaltbar auf eine kompakte **Übersicht** wie im Excel. Oben: Prognose total, pro Person, bezahlt, noch offen, Countdown und ✎ **Reise bearbeiten** (Daten, Pauschalen, Kostenaufteilung, Kopieren, Archivieren, Löschen).
+- **Erfassen** – Unterwegs-Modus: Tag auf dem Zeitstrahl antippen, Betrag (darf gerechnet werden: `300+150`), Währung, Kategorie, fertig. **Schnellknöpfe** mit den häufigsten Ausgaben der Reise. Zeigt das Tagesbudget («Essen: 23 von 80 CHF»).
 - **Offen**
   - **Zahlungskalender** – was ist wann fällig und von welchem Konto, mit «✓ bezahlt»-Knopf.
   - **Vor Ort / Bargeld** – was noch vor Ort zu bezahlen ist, pro Währung und Ort (z.B. «Strandort: 12'000 THB»), optional inkl. Pauschalen.
   - **To-dos** – pro Posten (z.B. «Passdaten schicken»), mit Fälligkeit.
 - **Auswertung** – nach Kategorie, Kosten pro Tag, Tagesbudget Plan vs. Ist, nach Ort (pro Nacht), Abrechnung nach Bezahlmethode, Kostenaufteilung, Export (CSV, Druck).
-- **Mehr** – Reise, Pauschalen, Kostenaufteilung, Vorlage kopieren, Excel-Import, Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
+- **Mehr** – nur Allgemeines: Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
 
 Keine externen Abhängigkeiten: nur Node.js. Daten als JSON-Datei mit täglicher automatischer Sicherung (30 Tage), Belege als Dateien daneben.
 
@@ -32,9 +33,11 @@ Keine externen Abhängigkeiten: nur Node.js. Daten als JSON-Datei mit täglicher
 
 Einzelne Tage können eine Pauschale ausschalten (✎ beim Tag), z.B. Liveaboard mit Vollpension.
 
+**Anzahlung und Restzahlung** gehören in einen Posten: Planbetrag = Total, darunter zwei Zahlungen. Wurden sie als zwei Posten erfasst (z.B. aus der Excel), im Posten **«Mit anderem Posten zusammenführen …»** wählen: Beträge werden addiert (in die Währung des Postens umgerechnet), Zahlungen, To-dos, Belege und Notizen übernommen.
+
 ### Kostenaufteilung (nur bei Bedarf)
 
-Unter **Mehr → Kostenaufteilung** einschalten und Teilnehmende erfassen. Danach:
+Unter **✎ Reise bearbeiten → Kostenaufteilung** einschalten und Teilnehmende erfassen. Danach:
 - bei jeder Zahlung «bezahlt von»,
 - pro Posten die Aufteilung: gleichmässig (alle oder ausgewählte), nach Anteilen (z.B. 2:1) oder nach Beträgen.
 
@@ -52,7 +55,7 @@ Reisli nutzt standardmässig Port **8081**, damit es neben Kässeli (8080) laufe
 
 ## 2. Bisherige Ferien-Excel übernehmen
 
-In der App: **Mehr → Excel importieren** → Datei wählen (z.B. `Ferien2027.xlsm`). Du siehst zuerst eine Vorschau mit Abgleich gegen das Excel-Total, Warnungen und erst danach «Reise übernehmen». Die Excel-Datei wird nicht gespeichert.
+In der App: Reise-Auswahl → **+ Neue Reise … → Aus Excel** → Datei wählen (z.B. `Ferien2027.xlsm`). Du siehst zuerst eine Vorschau mit Abgleich gegen das Excel-Total, Warnungen und erst danach «Reise übernehmen». Die Excel-Datei wird nicht gespeichert.
 
 Was übernommen wird:
 - **Übersicht** → Programm, Ort und Notiz pro Tag; Übernachtungen ohne eigene Kosten (Flugzeug, Liveaboard).

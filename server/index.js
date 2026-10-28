@@ -8,7 +8,7 @@ import { Auth, httpError } from './auth.js';
 import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, KNOWN } from './rates.js';
-import { copyTrip, tripCsv } from '../public/js/calc.js';
+import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -307,6 +307,24 @@ async function api(req, res, url) {
       t.items = t.items.filter((x) => x.id !== m[2]);
     });
     return send(res, 200, { rev: store.rev });
+  }
+
+  m = p.match(/^\/api\/trips\/([\w-]+)\/items\/([\w-]+)\/merge$/);
+  if (m && method === 'POST') {
+    // Zwei Posten zu einem zusammenführen (z.B. Anzahlung + Restzahlung); der andere wird entfernt, Belege wandern mit
+    const b = await readBody(req);
+    const item = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      const target = findItem(t, m[2]);
+      const other = findItem(t, str(b.otherId, 40));
+      if (target.id === other.id) throw httpError(400, 'Ein Posten kann nicht mit sich selbst zusammengeführt werden');
+      const merged = mergeItems(d.settings, target, other);
+      const clean = cleanItem(merged, user, target);
+      clean.files = merged.files;
+      t.items = t.items.filter((x) => x.id !== other.id).map((x) => (x.id === target.id ? clean : x));
+      return clean;
+    });
+    return send(res, 200, { rev: store.rev, item });
   }
 
   // ----- Belege (Dateien) -----

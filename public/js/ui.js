@@ -87,6 +87,11 @@ export function modal(title, content, buttons = [{ label: 'Schliessen' }]) {
   });
 }
 
+/** Schliesst den Dialog, in dem ein Element steckt (wie «Abbrechen») */
+export function closeDialogOf(el) {
+  el?.closest('dialog')?.dispatchEvent(new Event('cancel', { cancelable: true }));
+}
+
 export async function confirmDialog(title, text, okLabel = 'OK', danger = false) {
   const r = await modal(title, h('p', null, text), [
     { label: 'Abbrechen', value: false },
