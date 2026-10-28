@@ -24,7 +24,7 @@ Keine externen Abhängigkeiten: nur Node.js. Daten als JSON-Datei mit täglicher
 | Begriff | Bedeutung |
 |---|---|
 | **Planbetrag** | Was ein Posten kosten wird – in seiner Währung (z.B. 24'179 THB). Wird laufend zum aktuellen Kurs in CHF gerechnet. |
-| **Zahlung** | Was effektiv bezahlt wurde: Datum, Betrag, Methode und der **effektiv belastete CHF-Betrag** (z.B. laut KK-Abrechnung). Damit ist der Kurs eingefroren. Anzahlung und Restzahlung = zwei Zahlungen. |
+| **Zahlung** | Was effektiv bezahlt wurde: Datum, Methode und bei Fremdwährung zwei feste Werte – **angerechnet** in der Währung des Postens (laut Buchung, bestimmt den Rest) und **belastet in CHF** (laut Kartenabrechnung, bestimmt die Kosten). Kursschwankungen verschieben den Rest so nicht. Ist nur einer der beiden bekannt, wird der andere einmalig zum Tageskurs geschätzt und eingefroren. Anzahlung und Restzahlung = zwei Zahlungen. |
 | **Status** | wird abgeleitet: *offen* → *reserviert* → *angezahlt* → *bezahlt*, jeweils mit «Zahlung vorgängig» oder «vor Ort». |
 | **Prognose** | bezahlte Beträge + offene Beträge (zum aktuellen Kurs) + Pauschalen. |
 | **Pauschale «Tagesbudget»** | z.B. Essen 80 CHF/Tag. Erfasste Ausgaben der Kategorie werden angerechnet: Prognose = max(Pauschale, Ist); vergangene Tage mit Erfassungen zählen nur noch mit dem Ist. |

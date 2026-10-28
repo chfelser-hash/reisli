@@ -165,6 +165,9 @@ test('Zusammenführen: Anzahlung in CHF + Rest in THB', async () => {
   assert.equal(m.plan.currency, 'THB');
   assert.equal(m.plan.amount, 27000);
   assert.equal(m.payments.length, 1);
+  assert.equal(m.payments[0].currency, 'THB');
+  assert.equal(m.payments[0].amount, 12000);
+  assert.equal(m.payments[0].chf, 300);
   const c = itemCalc(settings, m);
   assert.equal(c.status, 'angezahlt');
   assert.equal(c.open, 15000);
@@ -215,4 +218,17 @@ test('Bargeld: Pauschalen in der Währung vor Ort des Tages', async () => {
   assert.equal(by.CHF.allowance, 80);
   assert.equal(by.CHF.places[0].place, 'Zürich');
   assert.equal(by.THB.allowance, 3200);
+});
+
+test('Anzahlung: fester Betrag in Postenwährung, Kursänderung verschiebt den Rest nicht', () => {
+  const it = item({ plan: { amount: 27300, currency: 'THB' }, payments: [{ amount: 12000, currency: 'THB', chf: 298.8 }] });
+  const a = itemCalc(settings, it);
+  const b = itemCalc({ ...settings, rates: { ...settings.rates, THB: { rate: 0.0245 } } }, it);
+  assert.equal(a.open, 15300);
+  assert.equal(b.open, 15300);
+  assert.equal(a.paidCHF, 298.8);
+  assert.equal(a.floating, false);
+  // Alte Erfassung nur in CHF: Rest schwankt → wird markiert
+  const old = item({ plan: { amount: 27300, currency: 'THB' }, payments: [{ amount: 298.8, currency: 'CHF', chf: 298.8 }] });
+  assert.equal(itemCalc(settings, old).floating, true);
 });

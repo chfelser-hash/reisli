@@ -143,7 +143,8 @@ function stayRow(t, stay, d) {
     h('span', { class: 'it-time' }, '🛏'),
     h('span', { class: 'it-main' },
       h('span', { class: 'it-title' }, stay.title),
-      h('span', { class: 'it-meta' }, first ? `Check-in · ${n} ${n === 1 ? 'Nacht' : 'Nächte'} bis ${fmtDay(stay.endDate)}` : `Nacht ${i} von ${n}`, stay.files?.length ? ' · 📎' : '')
+      h('span', { class: 'it-meta' }, first ? `Check-in · ${n} ${n === 1 ? 'Nacht' : 'Nächte'} bis ${fmtDay(stay.endDate)}` : `Nacht ${i} von ${n}`, stay.files?.length ? ' · 📎' : '',
+        first && c.floating ? h('span', { class: 'warn-inline' }, ' · ⚠ Anzahlung ohne Betrag in ' + stay.plan.currency) : null)
     ),
     first && c.hasCost ? h('span', { class: 'pill ' + STATUS[c.status].cls }, c.label) : h('span'),
     h('span', { class: 'it-amt' }, first && c.hasCost ? amountCell(stay, c) : c.hasCost ? h('small', { class: 'muted' }, 'CHF ' + fmt0(c.totalCHF / n) + '/Nacht') : '')
@@ -157,7 +158,8 @@ function itemRow(it) {
     h('span', { class: 'it-time' }, it.time || ''),
     h('span', { class: 'it-main' },
       h('span', { class: 'it-title' }, catDot(it.catId), it.title),
-      h('span', { class: 'it-meta' }, [it.detail, it.place].filter(Boolean).join(' · '), todos ? ` · ☐ ${todos}` : '', it.files?.length ? ' · 📎' : '', it.link ? ' · 🔗' : '')
+      h('span', { class: 'it-meta' }, [it.detail, it.place].filter(Boolean).join(' · '), todos ? ` · ☐ ${todos}` : '', it.files?.length ? ' · 📎' : '', it.link ? ' · 🔗' : '',
+        c.floating ? h('span', { class: 'warn-inline', title: 'Eine Zahlung ist nur in CHF erfasst – Posten öffnen und den angerechneten Betrag eintragen' }, ' · ⚠ Anzahlung ohne Betrag in ' + it.plan.currency) : null)
     ),
     c.hasCost ? h('span', { class: 'pill ' + STATUS[c.status].cls }, c.label) : h('span'),
     h('span', { class: 'it-amt' }, c.hasCost ? amountCell(it, c) : '')

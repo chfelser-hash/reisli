@@ -182,10 +182,15 @@ export function itemCalc(settings, it) {
   const pays = it.payments || [];
   let paidCHF = 0;
   let paidInPlan = 0;
+  let floating = false; // Zahlung ohne festen Betrag in Postenwährung → Rest schwankt mit dem Kurs
   for (const p of pays) {
     const chf = paymentCHF(settings, p);
     paidCHF += chf;
-    paidInPlan += p.currency === cur ? n(p.amount) : Number.isFinite(rate) ? chf / rate : 0;
+    if (p.currency === cur && (n(p.amount) || !Number.isFinite(p.chf))) paidInPlan += n(p.amount);
+    else {
+      floating = cur !== 'CHF';
+      paidInPlan += Number.isFinite(rate) ? chf / rate : 0;
+    }
   }
   let open = pAmt - paidInPlan;
   if (it.done || open <= Math.max(0.005, Math.abs(pAmt) * 0.005)) open = 0;
@@ -210,6 +215,7 @@ export function itemCalc(settings, it) {
     openCHF: round2(openCHF),
     totalCHF: round2(paidCHF + openCHF),
     rateMissing: !Number.isFinite(rate) && pAmt !== 0,
+    floating: floating && open > 0,
     status,
     label,
     hasCost,
@@ -581,6 +587,15 @@ export function mergeItems(settings, target, other) {
   const oCur = other.plan?.currency || 'CHF';
   const oAmt = n(other.plan?.amount);
   const add = oCur === cur ? oAmt : fromCHF(settings, toCHF(settings, oAmt, oCur), cur);
+  const factor = oCur === cur ? 1 : oAmt ? add / oAmt : fromCHF(settings, toCHF(settings, 1, oCur), cur);
+  // Zahlungen des anderen Postens werden mit demselben Faktor fest in die Zielwährung übernommen,
+  // damit der Rest nicht mit dem Kurs schwankt. Der effektiv belastete CHF-Betrag bleibt.
+  const moved = (other.payments || []).map((p) => {
+    if (p.currency === cur) return p;
+    const chf = Number.isFinite(p.chf) ? p.chf : toCHF(settings, p.amount, p.currency);
+    const amount = p.currency === oCur ? n(p.amount) * factor : fromCHF(settings, chf, cur);
+    return { ...p, amount: round2(amount), currency: cur, chf: round2(chf) };
+  });
   const join = (a, b) => [a, b].filter((x) => x && x.trim()).join(' · ');
   return {
     ...target,
@@ -588,7 +603,7 @@ export function mergeItems(settings, target, other) {
     reserved: !!(target.reserved || other.reserved),
     dueDate: target.dueDate || other.dueDate || '',
     dueMethodId: target.dueMethodId || other.dueMethodId || '',
-    payments: [...(target.payments || []), ...(other.payments || [])],
+    payments: [...(target.payments || []), ...moved],
     todos: [...(target.todos || []), ...(other.todos || [])],
     files: [...(target.files || []), ...(other.files || [])],
     note: join(target.note, other.note),

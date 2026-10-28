@@ -1,7 +1,7 @@
 // Dialog zum Erfassen und Bearbeiten eines Postens (inkl. Zahlungen, Aufteilung, To-dos, Belege)
 import { h, modal, chips, toast, confirmDialog, closeDialogOf } from '../ui.js';
 import { state, trip, settings, saveItem, deleteItem, api, render, tripCurrencies, cat, hasRate } from '../app.js';
-import { evalExpr, itemCalc, fmt, fmtCur, fmtDay, toCHF, round2, todayStr, isDate, addDays, nights, daysBetween, mergeItems, STATUS } from '../calc.js';
+import { evalExpr, itemCalc, fmt, fmtCur, fmtDay, toCHF, rateOf, round2, todayStr, isDate, addDays, nights, daysBetween, mergeItems, STATUS } from '../calc.js';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -98,7 +98,7 @@ export async function editItem(original, opts = {}) {
       preview();
     },
   });
-  const curSel = h('select', { class: 'cur-select', onchange: (e) => { it.plan.currency = e.target.value; preview(); } }, curOptions.map((c) => h('option', { value: c, selected: c === it.plan.currency }, c)));
+  const curSel = h('select', { class: 'cur-select', onchange: (e) => { it.plan.currency = e.target.value; preview(); renderPayments(); } }, curOptions.map((c) => h('option', { value: c, selected: c === it.plan.currency }, c)));
   const preview = () => {
     const cur = it.plan.currency;
     amountPreview.textContent = cur !== 'CHF' && it.plan.amount ? (hasRate(cur) ? `≈ CHF ${fmt(toCHF(S, it.plan.amount, cur))}` : `Kurs für ${cur} fehlt`) : '';
@@ -123,31 +123,86 @@ export async function editItem(original, opts = {}) {
   // ----- Zahlungen -----
   const parts = t.split?.enabled ? t.split.participants : [];
   const payList = h('div', { class: 'pay-list' });
+  // Zahlungen: Bei Posten in Fremdwährung hat jede Zahlung zwei feste Werte –
+  //   «angerechnet» in der Währung des Postens (was der Anbieter gutschreibt → bestimmt den Rest) und
+  //   «effektiv belastet» in CHF (was die Karte abgebucht hat → bestimmt die Kosten).
+  // Fehlt einer der beiden, wird er einmalig zum aktuellen Kurs geschätzt und beim Speichern eingefroren.
   const renderPayments = () => {
+    const cur = it.plan.currency || 'CHF';
+    const foreign = cur !== 'CHF';
     payList.replaceChildren(
       ...it.payments.map((p, i) => {
-        const chf = h('input', { class: 'num', inputmode: 'decimal', value: p.chf ?? '', placeholder: 'CHF', title: 'Effektiv belasteter Betrag in CHF (z.B. laut Kreditkartenabrechnung)', oninput: (e) => { const v = evalExpr(e.target.value); p.chf = e.target.value.trim() === '' || Number.isNaN(v) ? null : round2(v); updateStatus(); } });
-        const autoChf = () => {
-          if (p.currency === 'CHF') p.chf = p.amount;
-          else if (hasRate(p.currency)) p.chf = round2(toCHF(S, p.amount, p.currency));
-          chf.value = p.chf ?? '';
-          chf.disabled = p.currency === 'CHF';
-          updateStatus();
-        };
-        chf.disabled = p.currency === 'CHF';
-        return h('div', { class: 'pay-row' },
-          h('input', { type: 'date', value: p.date || '', title: 'Zahlungsdatum', onchange: (e) => (p.date = e.target.value) }),
-          h('div', { class: 'row gap' },
-            h('input', { class: 'num', inputmode: 'decimal', value: p.amount || '', placeholder: 'Betrag', oninput: (e) => { const v = evalExpr(e.target.value); if (!Number.isNaN(v)) { p.amount = round2(v); autoChf(); } } }),
-            h('select', { class: 'cur-select', onchange: (e) => { p.currency = e.target.value; autoChf(); } }, curOptions.map((c) => h('option', { value: c, selected: c === p.currency }, c)))
-          ),
-          h('label', { class: 'inline' }, 'CHF', chf),
-          h('select', { onchange: (e) => (p.methodId = e.target.value), 'aria-label': 'Bezahlmethode' }, h('option', { value: '' }, '— Methode —'), S.methods.map((m) => h('option', { value: m.id, selected: m.id === p.methodId }, m.name))),
-          parts.length ? h('select', { onchange: (e) => (p.paidBy = e.target.value), 'aria-label': 'Bezahlt von' }, h('option', { value: '' }, '— bezahlt von —'), parts.map((x) => h('option', { value: x.id, selected: x.id === p.paidBy }, x.name))) : null,
-          h('button', { type: 'button', class: 'icon-btn sm', 'aria-label': 'Zahlung entfernen', onclick: () => { it.payments.splice(i, 1); renderPayments(); updateStatus(); } }, '✕')
+        const legacy = foreign && p.currency !== cur; // alte Erfassung: nur CHF (o.ä.) bekannt
+        const methodSel = h('select', { onchange: (e) => (p.methodId = e.target.value), 'aria-label': 'Bezahlmethode' }, h('option', { value: '' }, '— Methode —'), S.methods.map((m) => h('option', { value: m.id, selected: m.id === p.methodId }, m.name)));
+        const paidBySel = parts.length ? h('select', { onchange: (e) => (p.paidBy = e.target.value), 'aria-label': 'Bezahlt von' }, h('option', { value: '' }, '— bezahlt von —'), parts.map((x) => h('option', { value: x.id, selected: x.id === p.paidBy }, x.name))) : null;
+        const del = h('button', { type: 'button', class: 'icon-btn sm', 'aria-label': 'Zahlung entfernen', onclick: () => { it.payments.splice(i, 1); renderPayments(); updateStatus(); } }, '✕');
+        const date = h('input', { type: 'date', value: p.date || '', title: 'Zahlungsdatum', onchange: (e) => (p.date = e.target.value) });
+
+        if (!foreign) {
+          // Posten in CHF: ein Betrag genügt
+          return h('div', { class: 'pay-row chf-only' }, date,
+            h('label', { class: 'inline' }, 'CHF', h('input', { class: 'num', inputmode: 'decimal', value: p.amount || '', placeholder: 'Betrag', oninput: (e) => { const v = evalExpr(e.target.value); if (!Number.isNaN(v)) { p.amount = round2(v); p.currency = 'CHF'; p.chf = p.amount; updateStatus(); } } })),
+            methodSel, paidBySel, del);
+        }
+
+        // Fremdwährung: angerechnet (cur) + belastet (CHF)
+        if (legacy) {
+          // Alte Zahlung nur in CHF: CHF übernehmen, angerechneten Betrag erfragen
+          p.chf = Number.isFinite(p.chf) ? p.chf : round2(toCHF(S, p.amount, p.currency));
+          p.amount = 0;
+          p.currency = cur;
+          p._legacy = true;
+        }
+        // Ein vorhandener CHF-Betrag ist «effektiv» und wird nie automatisch überschrieben
+        if (p._chfAuto === undefined) p._chfAuto = !Number.isFinite(p.chf);
+        const est = () => (hasRate(cur) && Number.isFinite(p.chf) ? round2(p.chf / rateOf(S, cur)) : '');
+        const credited = h('input', { class: 'num', inputmode: 'decimal', value: p.amount || '', placeholder: est() ? `≈ ${fmtCur(est())}` : cur,
+          title: `Angerechneter Betrag in ${cur} – wie auf der Buchung/Quittung. Bestimmt den offenen Rest.`,
+          oninput: (e) => {
+            const v = evalExpr(e.target.value);
+            if (Number.isNaN(v)) return;
+            p.amount = round2(v);
+            p._amountAuto = false;
+            // CHF schätzen, solange nichts Effektives eingetragen ist
+            if (p._chfAuto && hasRate(cur)) { p.chf = round2(toCHF(S, p.amount, cur)); chfIn.value = p.chf; }
+            updateStatus();
+          } });
+        const chfIn = h('input', { class: 'num', inputmode: 'decimal', value: p.chf ?? '', placeholder: 'CHF',
+          title: 'Effektiv belasteter Betrag in CHF (z.B. laut Kreditkartenabrechnung). Bestimmt die Kosten.',
+          oninput: (e) => {
+            const v = evalExpr(e.target.value);
+            p.chf = e.target.value.trim() === '' || Number.isNaN(v) ? null : round2(v);
+            p._chfAuto = false;
+            if (!p.amount) credited.placeholder = est() ? `≈ ${fmtCur(est())}` : cur;
+            updateStatus();
+          } });
+        return h('div', { class: 'pay-wrap' },
+          h('div', { class: 'pay-grid' },
+            h('label', null, 'Datum', date),
+            h('label', null, `Angerechnet (${cur})`, credited),
+            h('label', null, 'Belastet (CHF)', chfIn),
+            del,
+            h('label', null, 'Bezahlt mit', methodSel),
+            paidBySel ? h('label', null, 'Bezahlt von', paidBySel) : null),
+          p._legacy ? h('p', { class: 'warn small pay-hint' }, `Diese Zahlung war nur in CHF erfasst. Trag den angerechneten Betrag in ${cur} ein (laut Buchung) – sonst verschiebt sich der Rest mit jedem Kurs. Leer lassen = zum heutigen Kurs (≈ ${fmtCur(est(), cur)}) festhalten.`) : null
         );
       })
     );
+  };
+  /** Vor dem Speichern: fehlende Werte einmalig zum aktuellen Kurs ergänzen und so einfrieren */
+  const freezePayments = () => {
+    const cur = it.plan.currency || 'CHF';
+    for (const p of it.payments) {
+      if (cur === 'CHF') { p.currency = 'CHF'; p.chf = p.amount; continue; }
+      if (p.currency !== cur) { // nicht angefasste Altzahlung
+        p.chf = Number.isFinite(p.chf) ? p.chf : round2(toCHF(S, p.amount, p.currency));
+        p.amount = 0;
+        p.currency = cur;
+      }
+      if (!p.amount && Number.isFinite(p.chf) && hasRate(cur)) p.amount = round2(p.chf / rateOf(S, cur));
+      if (!Number.isFinite(p.chf) && p.amount && hasRate(cur)) p.chf = round2(toCHF(S, p.amount, cur));
+      delete p._legacy; delete p._chfAuto; delete p._amountAuto;
+    }
   };
   const lastMethod = () => {
     try { return localStorage.getItem('reisli.method') || ''; } catch { return ''; }
@@ -156,7 +211,7 @@ export async function editItem(original, opts = {}) {
     const c = itemCalc(S, it);
     const cur = it.plan.currency || 'CHF';
     const amt = rest ? c.open : 0;
-    it.payments.push({ id: uid(), date: todayStr(), amount: amt, currency: cur, chf: amt ? round2(toCHF(S, amt, cur)) : null, methodId: it.dueMethodId || lastMethod(), paidBy: parts[0]?.id || '', note: '' });
+    it.payments.push({ id: uid(), date: todayStr(), amount: amt, currency: cur, chf: amt ? round2(toCHF(S, amt, cur)) : null, methodId: it.dueMethodId || lastMethod(), paidBy: parts[0]?.id || '', note: '', _chfAuto: true });
     renderPayments();
     updateStatus();
   };
@@ -278,7 +333,7 @@ export async function editItem(original, opts = {}) {
         h('button', { type: 'button', class: 'btn small', onclick: () => addPayment(true) }, '✓ Rest bezahlt'),
         h('button', { type: 'button', class: 'btn small', onclick: () => addPayment(false) }, '+ Zahlung')),
       payList,
-      it.payments.length || it.done ? done : h('p', { class: 'hint' }, 'Anzahlungen und Restzahlungen einzeln erfassen. Bei Fremdwährung den effektiv belasteten CHF-Betrag eintragen – der Kurs wird so eingefroren.'),
+      it.payments.length || it.done ? done : h('p', { class: 'hint' }, 'Anzahlungen und Restzahlungen einzeln erfassen. Bei Fremdwährung je Zahlung zwei Werte: «angerechnet» (laut Buchung, bestimmt den Rest) und «belastet CHF» (laut Kartenabrechnung, bestimmt die Kosten). Kursschwankungen verändern so den Rest nicht mehr.'),
       it.payments.length || it.done ? null : done
     ),
     splitBox,
@@ -298,6 +353,7 @@ export async function editItem(original, opts = {}) {
         h('span', { class: 'muted small grow' }, 'Doppelt erfasst oder Anzahlung und Rest als zwei Posten?'),
         h('button', { type: 'button', class: 'btn small', onclick: async (e) => {
           if (!validate()) return;
+          freezePayments();
           const merged = await mergeDialog(it);
           if (!merged) return;
           saved = merged;
@@ -318,6 +374,7 @@ export async function editItem(original, opts = {}) {
     !isNew ? { label: 'Duplizieren', onClick: async () => {
       if (!validate()) return false;
       const copy = { ...structuredClone(it), id: undefined, payments: [], files: [], done: false, todos: it.todos.map((x) => ({ ...x, id: uid(), done: false })) };
+      freezePayments();
       await saveItem(it);
       saved = await saveItem(copy);
       toast('Kopie angelegt');
@@ -328,6 +385,7 @@ export async function editItem(original, opts = {}) {
       if (!validate()) return false;
       try {
         it.todos = it.todos.filter((x) => x.text.trim());
+        freezePayments();
         saved = await saveItem(it);
         for (const p of it.payments) if (p.methodId) try { localStorage.setItem('reisli.method', p.methodId); } catch { /* egal */ }
         toast(isNew ? 'Gespeichert' : 'Geändert');
