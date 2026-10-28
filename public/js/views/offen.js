@@ -106,7 +106,31 @@ async function kaesseliDialog(t) {
   const trips = () => (o.scope === 'all' ? state.data.trips : [t]);
   const info = h('div', { class: 'stack' });
   const methodSel = h('select', { onchange: (e) => { o.methodId = e.target.value === '*' ? undefined : e.target.value; update(); } });
+  // Nachgetragene Daten: erst gesammelt speichern
+  const pending = new Map(); // paymentId → {trip, item, payment, date}
+  const plausible = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d >= '2000-01-01' && d <= '2099-12-31';
+  const savePending = async () => {
+    for (const x of pending.values()) {
+      const item = x.trip.items.find((i) => i.id === x.item.id);
+      const saved = await saveItemIn(x.trip, { ...item, payments: item.payments.map((p) => (p.id === x.payment.id ? { ...p, date: x.date } : p)) });
+      Object.assign(item, saved);
+    }
+    const n = pending.size;
+    pending.clear();
+    return n;
+  };
+  const saveBtn = h('button', { type: 'button', class: 'btn small', disabled: true, onclick: async () => {
+    try {
+      const n = await savePending();
+      toast(`${n} Datum/Daten gespeichert`);
+      update();
+    } catch (ex) {
+      toast(ex.message, { error: true });
+    }
+  } }, 'Daten speichern');
   const update = () => {
+    saveBtn.disabled = !pending.size;
+    saveBtn.textContent = pending.size ? `Daten speichern (${pending.size})` : 'Daten speichern';
     // Methoden mit Anzahl Zahlungen anzeigen
     const counts = new Map();
     for (const tr of trips()) for (const it of tr.items) for (const p of it.payments || []) counts.set(p.methodId || '', (counts.get(p.methodId || '') || 0) + 1);
@@ -119,22 +143,19 @@ async function kaesseliDialog(t) {
     info.replaceChildren(
       h('p', null, h('strong', null, `${r.count} Zahlungen · CHF ${fmt(r.total)}`)),
       r.undated.length ? h('div', { class: 'undated' },
-        h('p', { class: 'warn small' }, `${r.undated.length} Zahlung(en) ohne Datum – Kässeli braucht ein Datum. Hier nachtragen (wird sofort gespeichert):`),
+        h('p', { class: 'warn small' }, `${r.undated.length} Zahlung(en) ohne Datum – Kässeli braucht ein Datum. Hier nachtragen:`),
         h('ul', null, r.undated.map((x) => h('li', null,
           h('span', null, `${x.trip.name}: ${x.item.title}`, h('span', { class: 'muted small' }, ` · CHF ${fmt(paymentCHF(S, x.payment))} · ${methodName(x.payment.methodId)}`)),
-          h('input', { type: 'date', 'aria-label': 'Zahlungsdatum', onchange: async (e) => {
-            if (!e.target.value) return;
-            try {
-              const item = x.trip.items.find((i) => i.id === x.item.id);
-              const saved = await saveItemIn(x.trip, { ...item, payments: item.payments.map((p) => (p.id === x.payment.id ? { ...p, date: e.target.value } : p)) });
-              Object.assign(item, saved);
-              update();
-            } catch (ex) {
-              toast(ex.message, { error: true });
-            }
+          // Nur merken – gespeichert wird erst mit «Daten speichern» bzw. «Herunterladen»
+          // (sonst würde schon die erste Ziffer der Jahreszahl als Datum übernommen)
+          h('input', { type: 'date', 'aria-label': 'Zahlungsdatum', value: pending.get(x.payment.id)?.date || '', onchange: (e) => {
+            if (plausible(e.target.value)) pending.set(x.payment.id, { ...x, date: e.target.value });
+            else pending.delete(x.payment.id);
+            saveBtn.disabled = !pending.size;
+            saveBtn.textContent = pending.size ? `Daten speichern (${pending.size})` : 'Daten speichern';
           } })
-        )))) : null
-    );
+        ))),
+        h('div', { class: 'row' }, h('span', { class: 'spacer' }), saveBtn)) : null    );
     return r;
   };
   update();
@@ -145,7 +166,18 @@ async function kaesseliDialog(t) {
     info,
     h('p', { class: 'hint' }, 'Kässeli ordnet eine Import-Datei einem Zahlungsmittel zu – am besten pro Methode eine Datei exportieren. Spalten: Datum, Buchungstext («Reise: Posten»), Betrag CHF (effektiv belastet), Bezahlmethode, Reise, Posten, Kategorie, Originalbetrag. Tipp: In Kässeli eine Regel mit dem Reisenamen anlegen (→ Topf Ferien). Schon importierte Zahlungen erkennt Kässeli als Duplikat.')
   );
-  const res = await modal('Zahlungen für Kässeli exportieren', content, [{ label: 'Abbrechen', value: null }, { label: 'Herunterladen', primary: true, value: 'ok' }]);
+  const res = await modal('Zahlungen für Kässeli exportieren', content, [
+    { label: 'Abbrechen', value: null },
+    { label: 'Herunterladen', primary: true, onClick: async () => {
+      try {
+        await savePending(); // erfasste Daten vorher speichern, damit sie mit exportiert werden
+        return 'ok';
+      } catch (ex) {
+        toast(ex.message, { error: true });
+        return false;
+      }
+    } },
+  ]);
   render(); // nachgetragene Daten anzeigen
   if (res !== 'ok') return;
   const r = paymentsCsv(S, trips(), { methodId: o.methodId });

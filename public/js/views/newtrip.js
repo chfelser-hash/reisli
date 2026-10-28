@@ -50,7 +50,7 @@ function emptyPane(anchor) {
       // Dauer beibehalten, wenn der Start verschoben wird
       const len = isDate(d.start) && isDate(d.end) ? daysBetween(d.start, d.end) : 14;
       d.start = e.target.value;
-      if (isDate(d.start)) endInput.value = d.end = addDays(d.start, Math.max(0, len));
+      if (isDate(d.start) && d.start >= '2000-01-01') endInput.value = d.end = addDays(d.start, Math.max(0, len));
     } })),
     h('label', null, 'Bis', endInput),
     h('label', null, 'Währung vor Ort', curSelect(d.currency, (v) => (d.currency = v), state.data.knownCurrencies)),
