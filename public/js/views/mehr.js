@@ -1,7 +1,7 @@
 // Ansicht «Mehr»: allgemeine Einstellungen – Bezahlmethoden, Kategorien, Währungen & Kurse, Benutzer, Sicherung.
 // Alles, was nur eine Reise betrifft, liegt unter «Reise bearbeiten» (✎ im Plan).
 import { h, toast, confirmDialog } from '../ui.js';
-import { state, api, reload, render, settings, selectTrip, download } from '../app.js';
+import { state, api, reload, render, settings, selectTrip, download, refreshRates } from '../app.js';
 import { fmt0, fmtCur, fmtDate } from '../calc.js';
 import { card, uid, saveSettings } from './shared.js';
 
@@ -84,7 +84,7 @@ function ratesCard() {
   const add = h('input', { list: 'known-cur', placeholder: 'z.B. JPY', maxlength: 3, class: 'short' });
   return card('rates', 'Währungen & Kurse',
     h('p', { class: 'muted small' }, 'Kurs = CHF pro Einheit. Die Planbeträge werden laufend zum aktuellen Kurs gerechnet; bereits bezahlte Beträge behalten ihren effektiven CHF-Wert. ',
-      state.data.autoRates ? 'Kurse werden täglich automatisch geholt (EZB), ausser «fix».' : 'Automatische Kurse sind ausgeschaltet.'),
+      state.data.autoRates ? 'Kurse werden täglich automatisch geholt (EZB) – vom Server oder, falls der nicht ins Internet kommt (z.B. Firmennetz), über den Browser. Ausser «fix».' : 'Automatische Kurse sind ausgeschaltet.'),
     h('div', { class: 'table-scroll' }, h('table', { class: 'simple rates' }, h('thead', null, h('tr', null, h('th', null, 'Währung'), h('th', null, 'CHF pro Einheit'), h('th', null, 'Quelle'), h('th'), h('th'))), body)),
     h('div', { class: 'row gap wrap' },
       add, h('datalist', { id: 'known-cur' }, (state.data.knownCurrencies || []).map((c) => h('option', { value: c }))),
@@ -100,10 +100,9 @@ function ratesCard() {
         e.target.disabled = true;
         try {
           await saveSettings({ rates: Object.fromEntries(Object.entries(rates).filter(([, r]) => r.rate > 0)) });
-          const r = await api('POST', '/api/rates/refresh');
-          state.data.settings = r.settings;
+          const r = await refreshRates();
           render();
-          toast(`Kurse vom ${fmtDate(r.date)} geholt${r.missing?.length ? ` · nicht verfügbar: ${r.missing.join(', ')}` : ''}`, { duration: 5000 });
+          toast(`Kurse vom ${fmtDate(r.date)} geholt${r.via === 'browser' ? ' (über den Browser)' : ''}${r.missing?.length ? ` · nicht verfügbar: ${r.missing.join(', ')}` : ''}`, { duration: 5000 });
         } catch (ex) {
           toast(ex.message, { error: true, duration: 6000 });
           e.target.disabled = false;

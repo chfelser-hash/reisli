@@ -126,6 +126,43 @@ export async function saveDay(date, day) {
   t.days[date] = r.day;
 }
 
+/**
+ * Wechselkurse aktualisieren: zuerst über den Server; klappt das nicht (z.B. Firmen-Proxy), holt der Browser
+ * die Kurse selbst beim Kursdienst und schickt sie dem Server. Liefert {date, updated, missing, via}.
+ */
+export async function refreshRates() {
+  let serverError;
+  try {
+    const r = await api('POST', '/api/rates/refresh');
+    state.data.settings = r.settings;
+    return { ...r, via: 'server' };
+  } catch (e) {
+    serverError = e;
+  }
+  try {
+    const res = await fetch(state.data.rateUrl || 'https://api.frankfurter.dev/v1/latest?from=CHF', { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('Kursdienst antwortet mit ' + res.status);
+    const j = await res.json();
+    const r = await api('POST', '/api/rates/apply', { date: j.date, rates: j.rates });
+    state.data.settings = r.settings;
+    return r;
+  } catch (e) {
+    throw new Error(`${serverError.message}. Auch der Browser kam nicht durch (${e.message}). Kurse bitte manuell erfassen.`);
+  }
+}
+
+/** Beim Öffnen: Kurse höchstens einmal pro Tag automatisch holen (still, ohne Meldung bei Fehlern) */
+async function autoRefreshRates() {
+  const S = state.data?.settings;
+  if (!state.data?.autoRates || !S || !Object.values(S.rates || {}).some((r) => !r.locked)) return;
+  const last = Date.parse(S.ratesFetchedAt || 0) || 0;
+  if (Date.now() - last < 20 * 3600e3) return;
+  try {
+    const r = await refreshRates();
+    if (r.updated?.length && !state.busy && !document.querySelector('dialog[open]')) render();
+  } catch { /* offline – dann eben morgen */ }
+}
+
 /** Datei-Download über einen unsichtbaren Link (Cookies werden mitgeschickt) */
 export function download(url) {
   const a = h('a', { href: url, download: '' });
@@ -263,6 +300,7 @@ async function start() {
   state.view = (location.hash || '#plan').slice(1);
   render();
   startPolling();
+  autoRefreshRates();
 }
 
 window.addEventListener('hashchange', () => {

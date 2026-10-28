@@ -1,6 +1,6 @@
 // Gemeinsame Bausteine für «Reise bearbeiten», «Neue Reise» und «Mehr»
 import { h, modal } from '../ui.js';
-import { state, api, settings } from '../app.js';
+import { state, api, settings, refreshRates } from '../app.js';
 import { currencies } from '../calc.js';
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -29,5 +29,5 @@ export async function ensureRate(cur) {
   const rates = { ...S.rates, [cur]: { rate: r === 'ok' && v.rate > 0 ? v.rate : 1, source: r === 'ok' && v.rate > 0 ? 'manuell' : 'fehlt – bitte erfassen' } };
   const res = await api('PUT', '/api/settings', { rates });
   state.data.settings = res.settings;
-  if (state.data.autoRates) api('POST', '/api/rates/refresh').then((x) => { state.data.settings = x.settings; }).catch(() => {});
+  if (state.data.autoRates) refreshRates().catch(() => {});
 }

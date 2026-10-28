@@ -7,7 +7,7 @@ import { Store, newId, migrateTrip } from './store.js';
 import { Auth, httpError } from './auth.js';
 import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
-import { fetchRates, applyRates, KNOWN } from './rates.js';
+import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,7 +99,7 @@ const attachment = (name) => `attachment; filename="${name.replace(/[^\w.\- ]/g,
 
 function publicData(user) {
   const d = store.data;
-  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES };
+  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES, rateUrl: RATE_URLS[0] };
 }
 
 function findTrip(d, tripId) {
@@ -373,8 +373,22 @@ async function api(req, res, url) {
       const result = await refreshRates(true);
       return send(res, 200, { rev: store.rev, ...result, settings: store.data.settings });
     } catch (e) {
-      throw httpError(502, 'Kurse konnten nicht geholt werden (' + (e.name === 'AbortError' ? 'Zeitüberschreitung' : e.message) + '). Ist die NAS mit dem Internet verbunden?');
+      // Der Browser versucht es danach selbst (siehe /api/rates/apply)
+      throw httpError(502, 'Server konnte die Kurse nicht holen: ' + describeFetchError(e));
     }
+  }
+  if (p === '/api/rates/apply' && method === 'POST') {
+    // Kurse, die der Browser selbst geholt hat (z.B. weil der Server hinter einem Firmen-Proxy steckt)
+    const b = await readBody(req);
+    const fetched = toChfPerUnit(b.date, b.rates);
+    if (!Object.keys(fetched.rates).length) throw httpError(400, 'Keine Kurse erhalten');
+    let result;
+    store.mutate((d) => {
+      result = applyRates(d.settings, fetched);
+      d.settings.ratesFetchedAt = new Date().toISOString();
+    });
+    lastRateRun = Date.now();
+    return send(res, 200, { rev: store.rev, ...result, via: 'browser', settings: store.data.settings });
   }
 
   // ----- Import & Export -----
@@ -498,7 +512,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'"
+    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://api.frankfurter.dev; manifest-src 'self'; worker-src 'self'; frame-src 'self'"
   );
   const url = new URL(req.url, 'http://localhost');
   try {
@@ -518,7 +532,7 @@ server.listen(PORT, HOST, () => {
 
 // Kurse beim Start und danach alle 6 Stunden prüfen (holt höchstens einmal pro Tag)
 if (AUTO_RATES) {
-  const run = () => refreshRates().then((r) => r && console.log(`Kurse aktualisiert (${r.date}): ${r.updated.join(', ') || '–'}`)).catch((e) => console.log('Kurse nicht aktualisiert:', e.message));
+  const run = () => refreshRates().then((r) => r && console.log(`Kurse aktualisiert (${r.date}): ${r.updated.join(', ') || '–'}`)).catch((e) => console.log('Kurse nicht vom Server aktualisiert:', describeFetchError(e), '– die App holt sie dann über den Browser.'));
   setTimeout(run, 5000);
   setInterval(run, 6 * 3600e3).unref();
 }

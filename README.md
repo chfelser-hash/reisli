@@ -106,7 +106,7 @@ Die Daten liegen in `/docker/reisli/data` (Reisen, Belege, tägliche Sicherungen
 
 ## 5. Wechselkurse
 
-Kurse werden als **CHF pro Einheit** gespeichert (THB 0.025 = 1 CHF ≈ 40 THB). Ist die NAS mit dem Internet verbunden, holt Reisli täglich die EZB-Referenzkurse (über frankfurter.app, ohne Konto). Währungen, die dort nicht geführt werden, und Kurse mit Häkchen **fix** bleiben unverändert. Ausschalten mit `AUTO_RATES=false` in `docker-compose.yml`.
+Kurse werden als **CHF pro Einheit** gespeichert (THB 0.025 = 1 CHF ≈ 40 THB). Reisli holt täglich die EZB-Referenzkurse (über [Frankfurter](https://frankfurter.dev), ohne Konto) – zuerst über den Server; kommt der nicht ins Internet (z.B. Firmenlaptop mit Proxy oder Firmenzertifikat), holt der Browser die Kurse beim Öffnen der App bzw. beim Knopf «↻ Kurse holen» selbst. `start.bat` startet Node.js zusätzlich mit den Windows-Zertifikaten (`--use-system-ca`), falls die Node-Version das kann. Währungen, die dort nicht geführt werden, und Kurse mit Häkchen **fix** bleiben unverändert. Ausschalten mit `AUTO_RATES=false` in `docker-compose.yml`.
 
 Bezahlte Beträge sind davon nicht betroffen – sie behalten den effektiv belasteten CHF-Wert.
 
