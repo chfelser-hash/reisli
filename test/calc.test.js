@@ -174,3 +174,22 @@ test('Zusammenführen: Anzahlung in CHF + Rest in THB', async () => {
   assert.equal(fmtRange('2027-01-28', '2027-02-05'), '28.01.–05.02.2027');
   assert.equal(fmtRange('2026-12-28', '2027-01-05'), '28.12.2026–05.01.2027');
 });
+
+test('Bargeld: Posten in ihrer Währung, Pauschalen in Reisewährung, CHF-Wert je Zeile', async () => {
+  const { cashPlan } = await import('../public/js/calc.js');
+  const trip = {
+    start: '2027-02-10', end: '2027-02-11', currency: 'THB', days: { '2027-02-10': { place: 'Boot' } },
+    allowances: [{ id: 'e', label: 'Essen', catId: 'essen', amount: 80, currency: 'CHF', mode: 'tag', per: 'tag' }],
+    items: [
+      item({ date: '2027-02-11', title: 'Transfer nach Hause', plan: { amount: 50, currency: 'CHF' }, payWhere: 'vorort' }),
+      item({ date: '2027-02-10', title: 'NP Gebühr', plan: { amount: 5000, currency: 'THB' }, payWhere: 'vorort' }),
+    ],
+  };
+  const g = cashPlan(settings, trip, { withAllowances: true, today: '2027-01-01' });
+  assert.deepEqual(g.map((x) => x.currency), ['THB', 'CHF']);
+  assert.equal(g[0].fixed, 5000);
+  assert.equal(g[0].allowance, 6400);
+  assert.equal(g[0].chf, 125 + 160);
+  assert.equal(g[1].total, 50);
+  assert.equal(g[1].rows[0].chf, 50);
+});

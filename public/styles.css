@@ -569,3 +569,7 @@ input.short { width: 7rem; flex: none; }
 .cash-place .cash-rows { margin: 0 0 .6rem 1.3rem; padding: .2rem .7rem; background: var(--bg); border-radius: 10px; }
 .cash-place .cash-rows li:last-child { border-bottom: 0; }
 @media (max-width: 640px) { .cp-amounts .muted { display: none; } }
+
+.cp-amounts .two small, .cash-rows .two small { font-weight: 500; }
+.cash-rows li { align-items: center; }
+@media (max-width: 640px) { .cp-split { display: none; } }

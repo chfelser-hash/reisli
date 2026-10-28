@@ -344,55 +344,72 @@ export function dueList(settings, trip) {
  * und Ort. Optional inkl. Pauschalen (in der Hauptwährung der Reise).
  */
 export function cashPlan(settings, trip, { withAllowances = false, from = '', today = todayStr() } = {}) {
-  const groups = new Map(); // currency → {currency, total, rows:[{date, place, title, amount}]}
+  // Posten erscheinen in der Währung, in der sie erfasst sind – so wird bezahlt (z.B. Transfer zu Hause in CHF).
+  // Pauschalen sind Schätzungen für Ausgaben vor Ort und werden in die Reisewährung umgerechnet.
+  // Jede Zeile führt zusätzlich ihren CHF-Wert mit.
+  const target = trip.currency || 'CHF';
+  const targetOk = Number.isFinite(rateOf(settings, target));
+  const groups = new Map(); // currency → {currency, total, rows:[{date, place, title, amount, chf, origAmount, origCurrency}]}
   const push = (cur, row) => {
-    if (!groups.has(cur)) groups.set(cur, { currency: cur, total: 0, rows: [] });
+    if (!groups.has(cur)) groups.set(cur, { currency: cur, total: 0, chf: 0, rows: [] });
     const g = groups.get(cur);
     g.total += row.amount;
+    g.chf += row.chf;
     g.rows.push(row);
   };
+  const conv = (chf) => (target === 'CHF' ? round2(chf) : Math.round(fromCHF(settings, chf, target)));
   for (const it of trip.items || []) {
     if (it.payWhere !== 'vorort') continue;
     if (from && it.date < from) continue;
     const c = itemCalc(settings, it);
     if (c.open <= 0) continue;
-    push(it.plan.currency || 'CHF', { date: it.date, place: placeFor(trip, it, it.date), title: it.title, amount: c.open, itemId: it.id });
+    push(it.plan.currency || 'CHF', { date: it.date, place: placeFor(trip, it, it.date), title: it.title, itemId: it.id, amount: c.open, chf: c.openCHF });
   }
   if (withAllowances) {
-    const cur = trip.currency || 'CHF';
     for (const [d, list] of allowanceMap(settings, trip, today)) {
       if (from && d < from) continue;
       for (const x of list) {
         if (!x.extraCHF) continue;
         // Pauschalen sind Schätzungen → auf ganze Einheiten runden
-        push(cur, { date: d, place: placeFor(trip, null, d), title: x.allowance.label, amount: Math.round(fromCHF(settings, x.extraCHF, cur)), allowance: true, allowanceId: x.allowance.id });
+        push(targetOk ? target : 'CHF', { date: d, place: placeFor(trip, null, d), title: x.allowance.label, amount: targetOk ? conv(x.extraCHF) : round2(x.extraCHF), chf: x.extraCHF, allowance: true, allowanceId: x.allowance.id });
       }
     }
   }
   const out = [...groups.values()];
   for (const g of out) {
     g.total = round2(g.total);
+    g.chf = round2(g.chf);
     g.rows.sort((a, b) => a.date.localeCompare(b.date));
     // Stationen: aufeinanderfolgende Tage am selben Ort = ein Abschnitt; fixe Beträge und Pauschalen getrennt
     g.places = [];
     g.fixed = 0;
     g.allowance = 0;
+    g.fixedChf = 0;
+    g.allowanceChf = 0;
     for (const r of g.rows) {
       const k = r.place || '—';
       let p = g.places[g.places.length - 1];
-      if (!p || p.place !== k) g.places.push((p = { place: k, from: r.date, to: r.date, total: 0, fixed: 0, allowance: 0, rows: [] }));
+      if (!p || p.place !== k) g.places.push((p = { place: k, from: r.date, to: r.date, total: 0, chf: 0, fixed: 0, fixedChf: 0, allowance: 0, allowanceChf: 0, rows: [] }));
       p.rows.push(r);
       p.total = round2(p.total + r.amount);
-      if (r.allowance) p.allowance = round2(p.allowance + r.amount);
-      else p.fixed = round2(p.fixed + r.amount);
+      p.chf = round2(p.chf + r.chf);
+      if (r.allowance) {
+        p.allowance = round2(p.allowance + r.amount);
+        p.allowanceChf = round2(p.allowanceChf + r.chf);
+      } else {
+        p.fixed = round2(p.fixed + r.amount);
+        p.fixedChf = round2(p.fixedChf + r.chf);
+      }
       if (r.date > p.to) p.to = r.date;
     }
     for (const p of g.places) {
       g.fixed = round2(g.fixed + p.fixed);
       g.allowance = round2(g.allowance + p.allowance);
+      g.fixedChf = round2(g.fixedChf + p.fixedChf);
+      g.allowanceChf = round2(g.allowanceChf + p.allowanceChf);
     }
   }
-  return out.sort((a, b) => b.total * n(rateOf(settings, b.currency)) - a.total * n(rateOf(settings, a.currency)));
+  return out.sort((a, b) => b.chf - a.chf);
 }
 
 /** Abrechnung pro Bezahlmethode: bezahlt (Zahlungen) und geplant (offene Posten mit vorgesehener Methode) */

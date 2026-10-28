@@ -86,7 +86,7 @@ function cash(t) {
   const from = fromToday && today > t.start ? today : '';
   const groups = cashPlan(S, t, { withAllowances, from, today });
   const opts = h('section', { class: 'card' },
-    h('p', { class: 'muted' }, 'Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst.'),
+    h('p', { class: 'muted' }, `Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst. Posten stehen in der Währung, in der sie erfasst sind; Pauschalen werden in ${t.currency} umgerechnet. Der CHF-Wert steht jeweils klein daneben.`),
     h('div', { class: 'row gap wrap' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: withAllowances, onchange: (e) => { withAllowances = e.target.checked; render(); } }), `Pauschalen einrechnen (in ${t.currency})`),
       today > t.start && today <= t.end ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: fromToday, onchange: (e) => { fromToday = e.target.checked; render(); } }), 'nur ab heute') : null
@@ -94,49 +94,62 @@ function cash(t) {
   );
   if (!groups.length) return [opts, h('section', { class: 'card' }, h('p', { class: 'empty' }, 'Nichts mehr vor Ort zu bezahlen.'))];
   const range = (p) => `${fmtDay(p.from)}${p.to !== p.from ? ' – ' + fmtDay(p.to) : ''}`;
-  return [opts, ...groups.map((g) => h('section', { class: 'card cash' },
-    h('div', { class: 'cash-head' },
-      h('span', { class: 'cash-cur' }, g.currency),
-      h('span', { class: 'cash-total' }, fmtCur(g.total)),
-      g.currency !== 'CHF' ? h('span', { class: 'muted' }, '≈ CHF ' + fmt0(toCHF(S, g.total, g.currency))) : null
-    ),
-    g.allowance ? h('p', { class: 'cash-split' },
-      h('span', null, h('i', { class: 'cs-dot fixed' }), 'fix ', h('strong', null, fmtCur(g.fixed, g.currency))),
-      h('span', null, h('i', { class: 'cs-dot allow' }), 'Pauschalen ', h('strong', null, '~' + fmtCur(g.allowance, g.currency)), h('span', { class: 'muted small' }, ' (Schätzung)'))
-    ) : null,
-    h('div', { class: 'cash-places' }, g.places.map((p) => h('details', { class: 'cash-place' },
-      h('summary', null,
-        h('span', { class: 'cp-name' }, h('strong', null, p.place), h('span', { class: 'muted small' }, ' ' + range(p))),
-        h('span', { class: 'cp-amounts' },
-          p.allowance && p.fixed ? h('span', { class: 'muted small' }, `${fmtCur(p.fixed)} fix + ~${fmtCur(p.allowance)}`) : null,
-          h('strong', { class: 'num' }, (p.fixed ? '' : '~') + fmtCur(p.total, g.currency))
-        )
+  return [opts, ...groups.map((g) => {
+    const foreign = g.currency !== 'CHF';
+    // Betrag in Reisewährung, darunter klein der CHF-Wert
+    const amt = (v, chf, approx = false) => h('span', { class: 'two' },
+      h('strong', null, (approx ? '~' : '') + fmtCur(v, g.currency)),
+      foreign ? h('small', null, (approx ? '~' : '') + 'CHF ' + fmt0(chf)) : null);
+    return h('section', { class: 'card cash' },
+      h('div', { class: 'cash-head' },
+        h('span', { class: 'cash-cur' }, g.currency),
+        h('span', { class: 'cash-total' }, fmtCur(g.total)),
+        foreign ? h('span', { class: 'muted' }, '≈ CHF ' + fmt0(g.chf)) : null
       ),
-      stationRows(t, p, g.currency)
-    )))
-  ))];
+      g.allowance ? h('p', { class: 'cash-split' },
+        h('span', null, h('i', { class: 'cs-dot fixed' }), 'fix ', h('strong', null, fmtCur(g.fixed, g.currency)), foreign ? h('span', { class: 'muted small' }, ` (CHF ${fmt0(g.fixedChf)})`) : null),
+        h('span', null, h('i', { class: 'cs-dot allow' }), 'Pauschalen ', h('strong', null, '~' + fmtCur(g.allowance, g.currency)), h('span', { class: 'muted small' }, foreign ? ` (CHF ${fmt0(g.allowanceChf)}, Schätzung)` : ' (Schätzung)'))
+      ) : null,
+      h('div', { class: 'cash-places' }, g.places.map((p) => h('details', { class: 'cash-place' },
+        h('summary', null,
+          h('span', { class: 'cp-name' }, h('strong', null, p.place), h('span', { class: 'muted small' }, ' ' + range(p))),
+          h('span', { class: 'cp-amounts' },
+            p.allowance && p.fixed ? h('span', { class: 'muted small cp-split' }, `${fmtCur(p.fixed)} fix + ~${fmtCur(p.allowance)}`) : null,
+            amt(p.total, p.chf, !p.fixed)
+          )
+        ),
+        stationRows(t, p, g.currency)
+      )))
+    );
+  })];
 }
 
-/** Einzelposten einer Station: fixe Beträge einzeln, Pauschalen pro Art zusammengefasst */
+/** Einzelposten einer Station: fixe Beträge einzeln, Pauschalen pro Art zusammengefasst – jeweils mit CHF */
 function stationRows(t, p, cur) {
+  const foreign = cur !== 'CHF';
   const fixed = p.rows.filter((r) => !r.allowance);
   const allow = new Map();
   for (const r of p.rows.filter((x) => x.allowance)) {
-    const a = allow.get(r.allowanceId) || { title: r.title, days: 0, total: 0, per: r.amount };
+    const a = allow.get(r.allowanceId) || { title: r.title, days: 0, total: 0, chf: 0, per: r.amount };
     a.days++;
     a.total += r.amount;
+    a.chf += r.chf;
     allow.set(r.allowanceId, a);
   }
+  const sub = (r) => {
+    if (r.origCurrency) return `erfasst: ${fmtCur(r.origAmount, r.origCurrency)}`;
+    return foreign ? 'CHF ' + fmt(r.chf) : null;
+  };
   return h('ul', { class: 'cash-rows' },
     fixed.map((r) => h('li', null,
       h('span', { class: 'muted' }, fmtDay(r.date)),
       h('button', { class: 'link-like', onclick: () => editItem(t.items.find((x) => x.id === r.itemId)) }, r.title),
-      h('span', { class: 'num' }, fmtCur(r.amount, cur))
+      h('span', { class: 'num two' }, h('span', null, fmtCur(r.amount, cur)), sub(r) ? h('small', null, sub(r)) : null)
     )),
     [...allow.values()].map((a) => h('li', { class: 'allowance' },
       h('span', { class: 'muted' }, a.days === 1 ? '1 Tag' : `${a.days} Tage`),
       h('span', null, `Pauschale ${a.title}${a.days > 1 ? ` à ~${fmtCur(a.per)}` : ''}`),
-      h('span', { class: 'num' }, '~' + fmtCur(a.total, cur))
+      h('span', { class: 'num two' }, h('span', null, '~' + fmtCur(a.total, cur)), foreign ? h('small', null, '~CHF ' + fmt0(a.chf)) : null)
     ))
   );
 }
