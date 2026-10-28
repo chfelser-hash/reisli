@@ -263,6 +263,21 @@ async function api(req, res, url) {
     });
     return send(res, 200, { rev: store.rev, count, trip: findTrip(store.data, m[1]) });
   }
+  m = p.match(/^\/api\/trips\/([\w-]+)\/days-currency$/);
+  if (m && method === 'POST') {
+    // Währung vor Ort für einen Bereich von Tagen setzen
+    const b = await readBody(req);
+    if (!isDate(b.from) || !isDate(b.to) || b.to < b.from) throw httpError(400, 'Zeitraum ungültig');
+    const cur = typeof b.currency === 'string' && /^[A-Z]{3}$/.test(b.currency) ? b.currency : '';
+    const days = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      for (let x = b.from; x <= b.to; x = new Date(Date.parse(x) + 864e5).toISOString().slice(0, 10)) {
+        t.days[x] = cleanDay({ ...(t.days[x] || {}), currency: cur });
+      }
+      return t.days;
+    });
+    return send(res, 200, { rev: store.rev, days });
+  }
   m = p.match(/^\/api\/trips\/([\w-]+)\/days\/(\d{4}-\d{2}-\d{2})$/);
   if (m && method === 'PUT') {
     const b = await readBody(req);

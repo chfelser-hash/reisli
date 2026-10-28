@@ -326,6 +326,9 @@ export function placeFor(trip, it, date) {
   if (stay?.place) return stay.place;
   return it?.place || '';
 }
+/** Währung vor Ort eines Tages (für Pauschalen): Tageseinstellung, sonst Reisewährung */
+export const dayCurrency = (trip, date) => trip.days?.[date]?.currency || trip.currency || 'CHF';
+
 /** Unterkunft für die Nacht von «date» */
 export const stayFor = (trip, date) => (trip.items || []).find((it) => isStay(it) && it.date <= date && it.endDate > date);
 
@@ -345,10 +348,9 @@ export function dueList(settings, trip) {
  */
 export function cashPlan(settings, trip, { withAllowances = false, from = '', today = todayStr() } = {}) {
   // Posten erscheinen in der Währung, in der sie erfasst sind – so wird bezahlt (z.B. Transfer zu Hause in CHF).
-  // Pauschalen sind Schätzungen für Ausgaben vor Ort und werden in die Reisewährung umgerechnet.
+  // Pauschalen sind Schätzungen für Ausgaben vor Ort und werden in die «Währung vor Ort» des Tages umgerechnet
+  // (pro Tag einstellbar, Standard: Reisewährung).
   // Jede Zeile führt zusätzlich ihren CHF-Wert mit.
-  const target = trip.currency || 'CHF';
-  const targetOk = Number.isFinite(rateOf(settings, target));
   const groups = new Map(); // currency → {currency, total, rows:[{date, place, title, amount, chf, origAmount, origCurrency}]}
   const push = (cur, row) => {
     if (!groups.has(cur)) groups.set(cur, { currency: cur, total: 0, chf: 0, rows: [] });
@@ -357,7 +359,6 @@ export function cashPlan(settings, trip, { withAllowances = false, from = '', to
     g.chf += row.chf;
     g.rows.push(row);
   };
-  const conv = (chf) => (target === 'CHF' ? round2(chf) : Math.round(fromCHF(settings, chf, target)));
   for (const it of trip.items || []) {
     if (it.payWhere !== 'vorort') continue;
     if (from && it.date < from) continue;
@@ -368,10 +369,14 @@ export function cashPlan(settings, trip, { withAllowances = false, from = '', to
   if (withAllowances) {
     for (const [d, list] of allowanceMap(settings, trip, today)) {
       if (from && d < from) continue;
+      // Währung vor Ort dieses Tages (Standard: Reisewährung); ohne Kurs → CHF
+      let cur = dayCurrency(trip, d);
+      if (!Number.isFinite(rateOf(settings, cur))) cur = 'CHF';
       for (const x of list) {
         if (!x.extraCHF) continue;
-        // Pauschalen sind Schätzungen → auf ganze Einheiten runden
-        push(targetOk ? target : 'CHF', { date: d, place: placeFor(trip, null, d), title: x.allowance.label, amount: targetOk ? conv(x.extraCHF) : round2(x.extraCHF), chf: x.extraCHF, allowance: true, allowanceId: x.allowance.id });
+        // Pauschalen sind Schätzungen → in Fremdwährung auf ganze Einheiten runden
+        const amount = cur === 'CHF' ? round2(x.extraCHF) : Math.round(fromCHF(settings, x.extraCHF, cur));
+        push(cur, { date: d, place: placeFor(trip, null, d), title: x.allowance.label, amount, chf: x.extraCHF, allowance: true, allowanceId: x.allowance.id });
       }
     }
   }

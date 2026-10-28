@@ -110,6 +110,8 @@ export function cleanDay(input) {
     place: str(input.place, 80),
     note: str(input.note, 1000),
     skip: Array.isArray(input.skip) ? input.skip.slice(0, 20).map((x) => str(x, 40)) : [],
+    // Währung vor Ort für Pauschalen an diesem Tag ('' = Reisewährung)
+    currency: typeof input.currency === 'string' && /^[A-Z]{3}$/.test(input.currency) ? input.currency : '',
   };
 }
 

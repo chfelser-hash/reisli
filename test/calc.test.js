@@ -193,3 +193,20 @@ test('Bargeld: Posten in ihrer Währung, Pauschalen in Reisewährung, CHF-Wert j
   assert.equal(g[1].total, 50);
   assert.equal(g[1].rows[0].chf, 50);
 });
+
+test('Bargeld: Pauschalen in der Währung vor Ort des Tages', async () => {
+  const { cashPlan, dayCurrency } = await import('../public/js/calc.js');
+  const trip = {
+    start: '2027-02-06', end: '2027-02-07', currency: 'THB',
+    days: { '2027-02-06': { place: 'Zürich', currency: 'CHF' }, '2027-02-07': { place: 'Bangkok' } },
+    allowances: [{ id: 'e', label: 'Essen', catId: 'essen', amount: 80, currency: 'CHF', mode: 'tag', per: 'tag' }],
+    items: [],
+  };
+  assert.equal(dayCurrency(trip, '2027-02-06'), 'CHF');
+  assert.equal(dayCurrency(trip, '2027-02-07'), 'THB');
+  const g = cashPlan(settings, trip, { withAllowances: true, today: '2027-01-01' });
+  const by = Object.fromEntries(g.map((x) => [x.currency, x]));
+  assert.equal(by.CHF.allowance, 80);
+  assert.equal(by.CHF.places[0].place, 'Zürich');
+  assert.equal(by.THB.allowance, 3200);
+});

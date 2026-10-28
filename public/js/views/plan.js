@@ -1,9 +1,9 @@
 // Ansicht «Plan»: Reiseablauf Tag für Tag (Posten, Unterkünfte, Pauschalen) und kompakte Übersicht
 import { h, modal, toast } from '../ui.js';
-import { state, trip, settings, go, saveDay, render } from '../app.js';
+import { state, trip, settings, go, saveDay, render, api, tripCurrencies } from '../app.js';
 import {
   tripDates, tripSummary, itemCalc, fmt, fmt0, fmtCur, fmtDay, fmtRange, dayNumber, daysBetween, todayStr, isStay,
-  nights, stayFor, placeFor, STATUS,
+  nights, stayFor, placeFor, dayCurrency, isDate, STATUS,
 } from '../calc.js';
 import { editItem, blankItem, catDot } from './item.js';
 import { timeline } from './timeline.js';
@@ -116,7 +116,8 @@ function dayCard(t, sum, d, today) {
       h('div', { class: 'day-title' },
         h('strong', null, fmtDay(d)),
         day.title ? h('span', null, day.title) : null,
-        place ? h('span', { class: 'place' }, place) : null
+        place ? h('span', { class: 'place' }, place) : null,
+        dayCurrency(t, d) !== t.currency ? h('span', { class: 'cur-tag', title: 'Währung vor Ort für Pauschalen' }, dayCurrency(t, d)) : null
       ),
       h('span', { class: 'day-sum' }, dayTotal ? 'CHF ' + fmt0(dayTotal) : ''),
       h('button', { class: 'icon-btn sm', 'aria-label': 'Tag bearbeiten', title: 'Programm, Ort, Pauschalen', onclick: () => editDay(t, d) }, '✎')
@@ -186,13 +187,25 @@ function allowanceRow(x, d, today) {
 }
 
 async function editDay(t, d) {
-  const day = { title: '', place: '', note: '', skip: [], ...(t.days?.[d] || {}) };
+  const day = { title: '', place: '', note: '', skip: [], currency: '', ...(t.days?.[d] || {}) };
   day.skip = [...(day.skip || [])];
   const applicable = (t.allowances || []).filter((a) => a.per !== 'nacht' || d < t.end);
+  // Währung vor Ort: gilt für die Pauschalen dieses Tages; optional für einen ganzen Bereich übernehmen
+  const range = { to: d };
+  const rangeTo = h('input', { type: 'date', value: d, min: d, max: t.end, onchange: (e) => (range.to = e.target.value) });
+  const curBox = h('div', { class: 'span2 day-cur' },
+    h('label', null, 'Währung vor Ort (für Pauschalen)',
+      h('select', { onchange: (e) => (day.currency = e.target.value) },
+        h('option', { value: '', selected: !day.currency }, `Reisewährung (${t.currency})`),
+        tripCurrencies().filter((c) => c !== t.currency).map((c) => h('option', { value: c, selected: c === day.currency }, c)))),
+    h('label', null, 'Gilt bis und mit', rangeTo),
+    h('p', { class: 'hint' }, 'Z.B. Abreise- und Ankunftstag in der Schweiz auf CHF stellen. «Gilt bis und mit» überträgt die Währung auf alle Tage bis dahin.')
+  );
   const content = h('div', { class: 'form-grid' },
     h('label', { class: 'span2' }, 'Programm', h('input', { value: day.title, placeholder: 'z.B. Transfer nach Khao Lak', oninput: (e) => (day.title = e.target.value) })),
     h('label', null, 'Ort', h('input', { value: day.place, placeholder: 'z.B. Bangkok', oninput: (e) => (day.place = e.target.value) })),
     h('label', { class: 'span2' }, 'Notiz', h('textarea', { rows: 2, oninput: (e) => (day.note = e.target.value) }, day.note)),
+    applicable.length ? curBox : null,
     applicable.length ? h('div', { class: 'span2' },
       h('span', { class: 'label' }, 'Pauschalen an diesem Tag'),
       applicable.map((a) => h('label', { class: 'check' },
@@ -209,6 +222,10 @@ async function editDay(t, d) {
   if (r !== 'ok') return;
   try {
     await saveDay(d, day);
+    if (isDate(range.to) && range.to > d) {
+      const res = await api('POST', `/api/trips/${t.id}/days-currency`, { from: d, to: range.to, currency: day.currency });
+      t.days = res.days;
+    }
     render();
   } catch (e) {
     toast(e.message, { error: true });

@@ -86,9 +86,16 @@ function cash(t) {
   const from = fromToday && today > t.start ? today : '';
   const groups = cashPlan(S, t, { withAllowances, from, today });
   const opts = h('section', { class: 'card' },
-    h('p', { class: 'muted' }, `Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst. Posten stehen in der Währung, in der sie erfasst sind; Pauschalen werden in ${t.currency} umgerechnet. Der CHF-Wert steht jeweils klein daneben.`),
+    h('p', { class: 'muted' }, 'Was noch vor Ort bezahlt werden muss – so weisst du, wie viel Bargeld du abheben oder einplanen musst. Posten stehen in der Währung, in der sie erfasst sind; Pauschalen in der «Währung vor Ort» des jeweiligen Tages (einstellbar im Plan über ✎ beim Tag). Der CHF-Wert steht jeweils klein daneben.'),
     h('div', { class: 'row gap wrap' },
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: withAllowances, onchange: (e) => { withAllowances = e.target.checked; render(); } }), `Pauschalen einrechnen (in ${t.currency})`),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: withAllowances, onchange: (e) => { withAllowances = e.target.checked; render(); } }), 'Pauschalen einrechnen'),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn small', onclick: (e) => {
+        const all = [...document.querySelectorAll('.cash-place')];
+        const open = !all.every((x) => x.open);
+        for (const x of all) x.open = open;
+        e.target.textContent = open ? 'Alle zuklappen' : 'Alle aufklappen';
+      } }, 'Alle aufklappen'),
       today > t.start && today <= t.end ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: fromToday, onchange: (e) => { fromToday = e.target.checked; render(); } }), 'nur ab heute') : null
     )
   );
