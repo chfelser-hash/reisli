@@ -41,7 +41,11 @@ Unter **✎ Reise bearbeiten → Kostenaufteilung** einschalten und Teilnehmende
 - bei jeder Zahlung «bezahlt von»,
 - pro Posten die Aufteilung: gleichmässig (alle oder ausgewählte), nach Anteilen (z.B. 2:1) oder nach Beträgen.
 
-Die Auswertung zeigt pro Person «hat bezahlt», «Anteil», «Saldo» und die **minimalen Ausgleichszahlungen** («Ben → Anna CHF 120.–»). Wird die Aufteilung nachträglich eingeschaltet, fragt Reisli, wem bisherige Zahlungen zugeordnet werden sollen.
+Die Auswertung zeigt pro Person «hat bezahlt», «Rückzahlungen», «Anteil», «Saldo» und die **minimalen Ausgleichszahlungen** («Ben → Anna CHF 120.–»). Ist ein Ausgleich bezahlt, mit **«✓ bezahlt»** bestätigen (oder «+ Rückzahlung erfassen»): Die Rückzahlung wird mit Datum, Art und Notiz protokolliert und der Restbestand sofort neu berechnet. Wird die Aufteilung nachträglich eingeschaltet, fragt Reisli, wem bisherige Zahlungen zugeordnet werden sollen.
+
+### Zahlungen nach Kässeli übernehmen
+
+**Offen → Zahlungen → Bisherige Zahlungen → «⬇ CSV für Kässeli …»**: diese oder alle Reisen, alle Methoden oder eine Methode pro Datei (Kässeli ordnet eine Import-Datei einem Zahlungsmittel zu). Spalten: Datum, Buchungstext («Reise: Posten»), Betrag CHF (effektiv belastet), Bezahlmethode, Reise, Posten, Kategorie, Originalbetrag, Währung. Kässeli erkennt das Format automatisch. Zahlungen ohne Datum lassen sich im Export-Fenster direkt nachtragen.
 
 ## 1. Lokal starten (Windows)
 

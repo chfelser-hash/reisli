@@ -1,7 +1,7 @@
 // Ansicht «Auswertung»: Kategorien, Kosten pro Tag (Plan vs. Ist), Orte, Bezahlmethoden, Aufteilung, Export
-import { h, s } from '../ui.js';
-import { state, trip, settings, cat, methodName, isOrphanMethod, replaceMethodDialog, render, download, go } from '../app.js';
-import { tripSummary, byMethod, openBreakdown, methodUsage, settlement, tripDates, dayNumber, fmt, fmt0, fmtDay, todayStr, isStay, nights } from '../calc.js';
+import { h, s, modal, toast, confirmDialog } from '../ui.js';
+import { state, api, trip, settings, cat, methodName, isOrphanMethod, replaceMethodDialog, render, download, go } from '../app.js';
+import { tripSummary, byMethod, openBreakdown, methodUsage, settlement, tripDates, dayNumber, fmt, fmt0, fmtDay, fmtDate, todayStr, isStay, nights, evalExpr } from '../calc.js';
 import { renderPlan } from './plan.js';
 
 export function renderAuswertung() {
@@ -188,25 +188,83 @@ function split(t, today) {
     );
   }
   const st = settlement(settings(), t, today);
+  const parts = t.split.participants;
+  const pname = (id) => parts.find((p) => p.id === id)?.name || '?';
   return h('section', { class: 'card' },
     h('div', { class: 'card-head' }, h('h2', null, 'Kostenaufteilung')),
-    h('table', { class: 'simple' },
-      h('thead', null, h('tr', null, h('th', null, 'Person'), h('th', { class: 'num' }, 'hat bezahlt'), h('th', { class: 'num' }, 'Anteil'), h('th', { class: 'num' }, 'Saldo'), h('th', { class: 'num' }, 'Anteil Prognose'))),
+    h('div', { class: 'table-scroll' }, h('table', { class: 'simple' },
+      h('thead', null, h('tr', null, h('th', null, 'Person'), h('th', { class: 'num' }, 'hat bezahlt'), h('th', { class: 'num' }, 'Rückzahlungen'), h('th', { class: 'num' }, 'Anteil'), h('th', { class: 'num' }, 'Saldo'), h('th', { class: 'num' }, 'Anteil Prognose'))),
       h('tbody', null, st.people.map((p) => h('tr', null,
         h('td', null, p.name),
         h('td', { class: 'num' }, fmt(p.paid)),
+        h('td', { class: 'num muted' }, p.repaid ? (p.repaid > 0 ? '+' : '') + fmt(p.repaid) : '–'),
         h('td', { class: 'num' }, fmt(p.share)),
         h('td', { class: 'num strong ' + (p.balance > 0.005 ? 'pos' : p.balance < -0.005 ? 'neg' : '') }, (p.balance > 0 ? '+' : '') + fmt(p.balance)),
         h('td', { class: 'num muted' }, fmt(p.forecastShare))
       )))
-    ),
+    )),
     st.unassigned ? h('p', { class: 'warn' }, `CHF ${fmt(st.unassigned)} an Zahlungen ohne «bezahlt von» – bei den Posten ergänzen.`) : null,
-    h('h3', { class: 'mt' }, 'Ausgleich'),
+    h('h3', { class: 'mt' }, 'Noch auszugleichen'),
     st.transfers.length
-      ? h('ul', { class: 'transfers' }, st.transfers.map((x) => h('li', null, h('strong', null, x.fromName), ' → ', h('strong', null, x.toName), h('span', { class: 'num strong' }, 'CHF ' + fmt(x.amount)))))
-      : h('p', { class: 'muted' }, 'Alles ausgeglichen.'),
-    h('p', { class: 'hint' }, 'Grundlage sind die effektiv geleisteten Zahlungen. «Anteil Prognose» zeigt, was am Ende inkl. offener Beträge und Pauschalen auf jede Person entfällt.')
+      ? h('ul', { class: 'transfers' }, st.transfers.map((x) => h('li', null,
+          h('strong', null, x.fromName), ' → ', h('strong', null, x.toName),
+          h('span', { class: 'num strong' }, 'CHF ' + fmt(x.amount)),
+          h('button', { class: 'btn small', onclick: () => repaymentDialog(t, { from: x.from, to: x.to, amount: x.amount }) }, '✓ bezahlt')
+        )))
+      : h('p', { class: 'pos strong' }, 'Alles ausgeglichen. ✓'),
+    h('div', { class: 'row gap mt' }, h('h3', null, 'Rückzahlungen'), h('span', { class: 'spacer' }),
+      h('button', { class: 'btn small', onclick: () => repaymentDialog(t, {}) }, '+ Rückzahlung erfassen')),
+    st.repayments.length
+      ? h('ul', { class: 'repay-list' }, [...st.repayments].reverse().map((r) => h('li', null,
+          h('span', { class: 'muted' }, r.date ? fmtDate(r.date) : '—'),
+          h('span', null, h('strong', null, pname(r.from)), ' → ', h('strong', null, pname(r.to)),
+            r.methodId || r.note ? h('span', { class: 'muted small' }, ' · ' + [r.methodId ? methodName(r.methodId) : '', r.note].filter(Boolean).join(' · ')) : null),
+          h('span', { class: 'num' }, 'CHF ' + fmt(r.amount)),
+          h('button', { class: 'icon-btn sm', 'aria-label': 'Rückzahlung löschen', onclick: async () => {
+            if (!(await confirmDialog('Rückzahlung löschen', `${pname(r.from)} → ${pname(r.to)}, CHF ${fmt(r.amount)} löschen?`, 'Löschen', true))) return;
+            await api('DELETE', `/api/trips/${t.id}/repayments/${r.id}`);
+            t.repayments = t.repayments.filter((x) => x.id !== r.id);
+            render();
+          } }, '✕')
+        )))
+      : h('p', { class: 'muted small' }, 'Noch keine. Bei «Noch auszugleichen» mit «✓ bezahlt» bestätigen oder hier manuell erfassen.'),
+    h('p', { class: 'hint' }, 'Grundlage sind die effektiv geleisteten Zahlungen plus erfasste Rückzahlungen. «Anteil Prognose» zeigt, was am Ende inkl. offener Beträge und Pauschalen auf jede Person entfällt.')
   );
+}
+
+/** Rückzahlung erfassen (vorbelegt z.B. aus «Noch auszugleichen») */
+async function repaymentDialog(t, pre) {
+  const S = settings();
+  const parts = t.split.participants;
+  const r = { date: todayStr(), from: pre.from || parts[0]?.id, to: pre.to || parts[1]?.id, amount: pre.amount || '', methodId: '', note: '' };
+  const err = h('p', { class: 'form-error' });
+  const person = (key) => h('select', { onchange: (e) => (r[key] = e.target.value) }, parts.map((p) => h('option', { value: p.id, selected: p.id === r[key] }, p.name)));
+  const content = h('div', { class: 'form-grid' },
+    h('label', null, 'Von', person('from')),
+    h('label', null, 'An', person('to')),
+    h('label', null, 'Betrag (CHF)', h('input', { class: 'num', inputmode: 'decimal', value: r.amount, oninput: (e) => (r.amount = evalExpr(e.target.value)) })),
+    h('label', null, 'Datum', h('input', { type: 'date', value: r.date, onchange: (e) => (r.date = e.target.value) })),
+    h('label', null, 'Wie', h('select', { onchange: (e) => (r.methodId = e.target.value) }, h('option', { value: '' }, '— egal —'), S.methods.map((m) => h('option', { value: m.id }, m.name)))),
+    h('label', null, 'Notiz', h('input', { placeholder: 'z.B. Twint', oninput: (e) => (r.note = e.target.value) })),
+    err
+  );
+  const res = await modal('Rückzahlung erfassen', content, [
+    { label: 'Abbrechen', value: null },
+    { label: 'Speichern', primary: true, onClick: async () => {
+      try {
+        const x = await api('POST', `/api/trips/${t.id}/repayments`, r);
+        (t.repayments ||= []).push(x.repayment);
+        return 'ok';
+      } catch (ex) {
+        err.textContent = ex.message;
+        return false;
+      }
+    } },
+  ]);
+  if (res === 'ok') {
+    toast('Rückzahlung erfasst');
+    render();
+  }
 }
 
 // ---------- Export ----------

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, newId, migrateTrip } from './store.js';
 import { Auth, httpError } from './auth.js';
-import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, isDate, str } from './clean.js';
+import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
@@ -287,6 +287,29 @@ async function api(req, res, url) {
       return t.days[m[2]];
     });
     return send(res, 200, { rev: store.rev, day });
+  }
+
+  // ----- Rückzahlungen (Kostenaufteilung) -----
+  m = p.match(/^\/api\/trips\/([\w-]+)\/repayments$/);
+  if (m && method === 'POST') {
+    const b = await readBody(req);
+    const r = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      const ids = new Set(t.split.participants.map((x) => x.id));
+      const rep = { ...cleanRepayment(b), by: user.name, createdAt: new Date().toISOString() };
+      if (!ids.has(rep.from) || !ids.has(rep.to)) throw httpError(400, 'Person unbekannt');
+      t.repayments.push(rep);
+      return rep;
+    });
+    return send(res, 200, { rev: store.rev, repayment: r });
+  }
+  m = p.match(/^\/api\/trips\/([\w-]+)\/repayments\/([\w-]+)$/);
+  if (m && method === 'DELETE') {
+    store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      t.repayments = t.repayments.filter((x) => x.id !== m[2]);
+    });
+    return send(res, 200, { rev: store.rev });
   }
 
   // ----- Posten -----

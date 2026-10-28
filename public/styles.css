@@ -615,3 +615,14 @@ button.ob-part:hover { background: var(--line-2); color: inherit; }
 @media (max-width: 640px) { .ob-op { display: none; } .open-breakdown { display: grid; grid-template-columns: 1fr 1fr; } }
 tr.orphan td:first-child { color: var(--warn); font-weight: 650; }
 tr.orphan .link { margin-left: .4rem; }
+
+/* Rückzahlungen & Export */
+.repay-list { list-style: none; margin: .3rem 0; padding: 0; }
+.repay-list li { display: grid; grid-template-columns: 6rem 1fr auto auto; gap: .6rem; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line-2); }
+.transfers li .btn { margin-left: .6rem; }
+.export-btn { margin-left: auto; float: right; }
+@media (max-width: 520px) { .repay-list li { grid-template-columns: 1fr auto auto; } .repay-list li > span:first-child { grid-column: 1 / -1; } }
+
+.undated ul { list-style: none; margin: .3rem 0 0; padding: 0; max-height: 40vh; overflow: auto; }
+.undated li { display: grid; grid-template-columns: 1fr 10rem; gap: .5rem; align-items: center; padding: .3rem 0; border-bottom: 1px solid var(--line-2); font-size: .9rem; }
+@media (max-width: 520px) { .undated li { grid-template-columns: 1fr; } }

@@ -247,3 +247,38 @@ test('Offen: Aufschlüsselung vorgängig + vor Ort + Pauschalen, Methodennutzung
   assert.deepEqual(openBreakdown(settings, trip, '2027-01-01'), { vorgaengig: 100, vorort: 50, allowance: 80, total: 230 });
   assert.equal(methodUsage([trip], 'alt'), 2);
 });
+
+test('Kostenaufteilung: Rückzahlungen verändern Saldo und Ausgleich', () => {
+  const parts = [{ id: 'a', name: 'Anna' }, { id: 'b', name: 'Ben' }];
+  const trip = {
+    start: '2027-02-06', end: '2027-02-06', days: {}, allowances: [],
+    split: { enabled: true, participants: parts },
+    items: [item({ plan: { amount: 200, currency: 'CHF' }, payments: [{ amount: 200, currency: 'CHF', paidBy: 'a' }] })],
+    repayments: [{ id: 'r1', date: '2027-03-01', from: 'b', to: 'a', amount: 60 }],
+  };
+  const st = settlement(settings, trip);
+  const by = Object.fromEntries(st.people.map((p) => [p.id, p]));
+  assert.equal(by.b.repaid, 60);
+  assert.equal(by.a.repaid, -60);
+  assert.equal(by.a.balance, 40);
+  assert.equal(by.b.balance, -40);
+  assert.deepEqual(st.transfers.map((t) => [t.from, t.to, t.amount]), [['b', 'a', 40]]);
+  trip.repayments.push({ id: 'r2', date: '2027-03-02', from: 'b', to: 'a', amount: 40 });
+  assert.equal(settlement(settings, trip).transfers.length, 0);
+});
+
+test('CSV für Kässeli: Datum, Buchungstext, Betrag; ohne Datum separat', async () => {
+  const { paymentsCsv } = await import('../public/js/calc.js');
+  const t = { name: 'Thailand', items: [
+    item({ title: 'Flug; BKK', catId: 'flug', payments: [{ date: '2026-10-01', amount: 2146.8, currency: 'CHF', chf: 2146.8, methodId: 'kk' }] }),
+    item({ title: 'Hotel', payments: [{ date: '2026-11-02', amount: 4000, currency: 'THB', chf: 98.5, methodId: 'post' }, { date: '', amount: 10, currency: 'CHF', chf: 10, methodId: 'kk' }] }),
+  ] };
+  const all = paymentsCsv(settings, [t]);
+  const lines = all.csv.replace('﻿', '').split('\r\n');
+  assert.equal(lines[0], 'Datum;Buchungstext;Betrag CHF;Bezahlmethode;Reise;Posten;Kategorie;Originalbetrag;Währung;Notiz');
+  assert.equal(lines[1], '01.10.2026;"Thailand: Flug; BKK";2146.80;Kreditkarte;Thailand;"Flug; BKK";Flug;;;');
+  assert.equal(lines[2], '02.11.2026;Thailand: Hotel;98.50;Postkonto;Thailand;Hotel;;4000.00;THB;');
+  assert.equal(all.count, 2);
+  assert.equal(all.undated.length, 1);
+  assert.equal(paymentsCsv(settings, [t], { methodId: 'kk' }).count, 1);
+});

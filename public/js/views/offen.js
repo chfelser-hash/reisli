@@ -1,7 +1,7 @@
 // Ansicht «Offen»: Zahlungskalender (was ist wann fällig), Bargeld vor Ort, To-dos
-import { h, toast } from '../ui.js';
-import { trip, settings, saveItem, render, methodName, personName } from '../app.js';
-import { dueList, cashPlan, todoList, openBreakdown, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
+import { h, toast, modal } from '../ui.js';
+import { state, api, trip, settings, saveItem, render, methodName, personName } from '../app.js';
+import { dueList, cashPlan, todoList, openBreakdown, paymentsCsv, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
 import { editItem, quickPay, catDot } from './item.js';
 import { renderPlan } from './plan.js';
 
@@ -75,7 +75,8 @@ function payments(t) {
   paid.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
   const history = h('section', { class: 'card' },
     h('details', null,
-      h('summary', null, h('strong', null, `Bisherige Zahlungen (${paid.length})`), h('span', { class: 'muted' }, ' · CHF ' + fmt0(paid.reduce((a, x) => a + paymentCHF(S, x.p), 0)))),
+      h('summary', null, h('strong', null, `Bisherige Zahlungen (${paid.length})`), h('span', { class: 'muted' }, ' · CHF ' + fmt0(paid.reduce((a, x) => a + paymentCHF(S, x.p), 0))),
+        h('button', { class: 'btn small export-btn', onclick: (e) => { e.preventDefault(); kaesseliDialog(t); } }, '⬇ CSV für Kässeli …')),
       h('div', { class: 'table-scroll' }, h('table', null,
         h('thead', null, h('tr', null, h('th', null, 'Datum'), h('th', null, 'Posten'), h('th', null, 'Methode'), t.split?.enabled ? h('th', null, 'Von') : null, h('th', { class: 'num' }, 'Betrag'), h('th', { class: 'num' }, 'CHF'))),
         h('tbody', null, paid.map(({ it, p }) => h('tr', { class: 'clickable', onclick: () => editItem(it) },
@@ -90,6 +91,74 @@ function payments(t) {
     )
   );
   return [due, history];
+}
+
+/** Posten in einer bestimmten Reise speichern (auch wenn sie nicht die gewählte ist) */
+async function saveItemIn(tr, item) {
+  const r = await api('PUT', `/api/trips/${tr.id}/items/${item.id}`, item);
+  return r.item;
+}
+
+/** Export der Zahlungen als CSV für den Import in Kässeli */
+async function kaesseliDialog(t) {
+  const S = settings();
+  const o = { scope: 'trip', methodId: undefined };
+  const trips = () => (o.scope === 'all' ? state.data.trips : [t]);
+  const info = h('div', { class: 'stack' });
+  const methodSel = h('select', { onchange: (e) => { o.methodId = e.target.value === '*' ? undefined : e.target.value; update(); } });
+  const update = () => {
+    // Methoden mit Anzahl Zahlungen anzeigen
+    const counts = new Map();
+    for (const tr of trips()) for (const it of tr.items) for (const p of it.payments || []) counts.set(p.methodId || '', (counts.get(p.methodId || '') || 0) + 1);
+    const cur = o.methodId === undefined ? '*' : o.methodId;
+    methodSel.replaceChildren(
+      h('option', { value: '*', selected: cur === '*' }, 'Alle Methoden in einer Datei'),
+      ...[...counts.entries()].map(([id, n]) => h('option', { value: id, selected: cur === id }, `${id ? methodName(id) : '— ohne Methode —'} (${n})`))
+    );
+    const r = paymentsCsv(S, trips(), { methodId: o.methodId });
+    info.replaceChildren(
+      h('p', null, h('strong', null, `${r.count} Zahlungen · CHF ${fmt(r.total)}`)),
+      r.undated.length ? h('div', { class: 'undated' },
+        h('p', { class: 'warn small' }, `${r.undated.length} Zahlung(en) ohne Datum – Kässeli braucht ein Datum. Hier nachtragen (wird sofort gespeichert):`),
+        h('ul', null, r.undated.map((x) => h('li', null,
+          h('span', null, `${x.trip.name}: ${x.item.title}`, h('span', { class: 'muted small' }, ` · CHF ${fmt(paymentCHF(S, x.payment))} · ${methodName(x.payment.methodId)}`)),
+          h('input', { type: 'date', 'aria-label': 'Zahlungsdatum', onchange: async (e) => {
+            if (!e.target.value) return;
+            try {
+              const item = x.trip.items.find((i) => i.id === x.item.id);
+              const saved = await saveItemIn(x.trip, { ...item, payments: item.payments.map((p) => (p.id === x.payment.id ? { ...p, date: e.target.value } : p)) });
+              Object.assign(item, saved);
+              update();
+            } catch (ex) {
+              toast(ex.message, { error: true });
+            }
+          } })
+        )))) : null
+    );
+    return r;
+  };
+  update();
+  const content = h('div', { class: 'stack' },
+    h('label', null, 'Reisen', h('select', { onchange: (e) => { o.scope = e.target.value; update(); } },
+      h('option', { value: 'trip' }, `Nur «${t.name}»`), h('option', { value: 'all' }, 'Alle Reisen'))),
+    h('label', null, 'Bezahlmethode', methodSel),
+    info,
+    h('p', { class: 'hint' }, 'Kässeli ordnet eine Import-Datei einem Zahlungsmittel zu – am besten pro Methode eine Datei exportieren. Spalten: Datum, Buchungstext («Reise: Posten»), Betrag CHF (effektiv belastet), Bezahlmethode, Reise, Posten, Kategorie, Originalbetrag. Tipp: In Kässeli eine Regel mit dem Reisenamen anlegen (→ Topf Ferien). Schon importierte Zahlungen erkennt Kässeli als Duplikat.')
+  );
+  const res = await modal('Zahlungen für Kässeli exportieren', content, [{ label: 'Abbrechen', value: null }, { label: 'Herunterladen', primary: true, value: 'ok' }]);
+  render(); // nachgetragene Daten anzeigen
+  if (res !== 'ok') return;
+  const r = paymentsCsv(S, trips(), { methodId: o.methodId });
+  if (!r.count) return toast('Keine Zahlungen mit Datum für diese Auswahl', { error: true });
+  const slug = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
+  const name = ['reisli-zahlungen', o.scope === 'all' ? 'alle' : slug(t.name), o.methodId !== undefined ? slug(methodName(o.methodId) || 'ohne') : '', todayStr()].filter(Boolean).join('_') + '.csv';
+  const url = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }));
+  const a = h('a', { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast(`${r.count} Zahlungen exportiert`);
 }
 
 // ---------- Bargeld / vor Ort ----------

@@ -91,12 +91,13 @@ export function evalExpr(input) {
 }
 
 const n = (v) => (Number.isFinite(v) ? v : 0);
-export const round2 = (v) => Math.round(n(v) * 100) / 100;
+const nz = (v) => (Math.abs(v) < 0.005 ? 0 : v); // kleine Rundungsreste als 0 anzeigen
+export const round2 = (v) => Math.round(n(v) * 100) / 100 || 0; // «|| 0» vermeidet -0 (Anzeige «-0.00»)
 
 const f2 = new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const f0 = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 0 });
-export const fmt = (v) => f2.format(n(v));
-export const fmt0 = (v) => f0.format(Math.round(n(v)));
+export const fmt = (v) => f2.format(nz(n(v)));
+export const fmt0 = (v) => f0.format(Math.round(n(v)) || 0);
 /** Betrag in Fremdwährung: ganze Zahlen ohne Nachkommastellen (z.B. 15'300 THB) */
 export const fmtCur = (v, cur) => {
   const x = n(v);
@@ -532,8 +533,18 @@ export function settlement(settings, trip, today = todayStr()) {
   let allowance = 0;
   for (const list of allowanceMap(settings, trip, today).values()) for (const x of list) allowance += x.extraCHF;
   for (const r of Object.values(res)) r.forecastShare += parts.length ? allowance / parts.length : 0;
-  const people = Object.values(res).map((r) => ({ ...r, paid: round2(r.paid), share: round2(r.share), forecastShare: round2(r.forecastShare), balance: round2(r.paid - r.share) }));
-  return { people, transfers: minimizeTransfers(people), unassigned: round2(unassigned) };
+  // Rückzahlungen unter den Teilnehmenden: wer zurückzahlt, hat mehr beigetragen; wer erhält, weniger
+  for (const r of Object.values(res)) r.repaid = 0;
+  const repayments = (trip.repayments || []).filter((x) => res[x.from] && res[x.to] && x.amount > 0).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  for (const x of repayments) {
+    res[x.from].repaid += x.amount;
+    res[x.to].repaid -= x.amount;
+  }
+  const people = Object.values(res).map((r) => ({
+    ...r, paid: round2(r.paid), share: round2(r.share), repaid: round2(r.repaid), forecastShare: round2(r.forecastShare),
+    balance: round2(r.paid + r.repaid - r.share),
+  }));
+  return { people, transfers: minimizeTransfers(people), unassigned: round2(unassigned), repayments };
 }
 
 /** Möglichst wenige Überweisungen: grösster Schuldner zahlt grösstem Gläubiger */
@@ -638,6 +649,40 @@ export function mergeItems(settings, target, other) {
     link: target.link || other.link || '',
     done: false,
   };
+}
+
+// ---------- Zahlungen für Kässeli ----------
+
+/**
+ * Bisherige Zahlungen als CSV (Semikolon, UTF-8 mit BOM) für den Import in Kässeli.
+ * Kässeli erkennt «Datum», «Buchungstext» und «Betrag» automatisch; Ausgaben sind positiv.
+ * Zahlungen ohne Datum werden nicht exportiert (Kässeli braucht ein Datum) und separat gemeldet.
+ * opts.methodId: nur diese Methode ('' = ohne Methode, undefined = alle)
+ */
+export function paymentsCsv(settings, trips, { methodId } = {}) {
+  const meth = (id) => settings.methods?.find((m) => m.id === id)?.name || '';
+  const cat = (id) => settings.categories?.find((c) => c.id === id)?.name || '';
+  const q = (v) => {
+    const x = String(v ?? '');
+    return /[;"\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x;
+  };
+  const rows = [];
+  const undated = [];
+  for (const t of trips) for (const it of t.items || []) for (const p of it.payments || []) {
+    if (methodId !== undefined && (p.methodId || '') !== methodId) continue;
+    const chf = paymentCHF(settings, p);
+    if (!chf) continue;
+    if (!isDate(p.date)) { undated.push({ trip: t, item: it, payment: p }); continue; }
+    rows.push({ t, it, p, chf });
+  }
+  rows.sort((a, b) => a.p.date.localeCompare(b.p.date) || a.it.title.localeCompare(b.it.title));
+  const head = ['Datum', 'Buchungstext', 'Betrag CHF', 'Bezahlmethode', 'Reise', 'Posten', 'Kategorie', 'Originalbetrag', 'Währung', 'Notiz'];
+  const lines = rows.map(({ t, it, p, chf }) => [
+    fmtDate(p.date), `${t.name}: ${it.title}`, round2(chf).toFixed(2), meth(p.methodId), t.name, it.title, cat(it.catId),
+    p.currency !== 'CHF' ? round2(p.amount).toFixed(2) : '', p.currency !== 'CHF' ? p.currency : '', p.note || '',
+  ]);
+  const csv = '\ufeff' + [head, ...lines].map((r) => r.map(q).join(';')).join('\r\n');
+  return { csv, count: rows.length, total: round2(rows.reduce((a, r) => a + r.chf, 0)), undated };
 }
 
 // ---------- Export ----------

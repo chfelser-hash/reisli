@@ -104,6 +104,13 @@ export function cleanTripMeta(input, existing = {}) {
   };
 }
 
+export function cleanRepayment(r) {
+  const amount = num(r.amount);
+  if (!(amount > 0)) throw httpError(400, 'Betrag ungültig');
+  if (!r.from || !r.to || r.from === r.to) throw httpError(400, 'Von und An müssen zwei verschiedene Personen sein');
+  return { id: id(r.id), date: optDate(r.date), from: str(r.from, 40), to: str(r.to, 40), amount, methodId: str(r.methodId, 40), note: str(r.note, 200) };
+}
+
 export function cleanDay(input) {
   return {
     title: str(input.title, 200),
@@ -122,7 +129,11 @@ export function cleanTrip(input, user) {
   const days = {};
   for (const [d, v] of Object.entries(input.days || {})) if (isDate(d) && v && typeof v === 'object') days[d] = cleanDay(v);
   const items = (Array.isArray(input.items) ? input.items : []).slice(0, 3000).map((it) => cleanItem(it, user));
-  return migrateTrip({ id: id(input.id), ...meta, days, items, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
+  const repayments = [];
+  for (const r of Array.isArray(input.repayments) ? input.repayments.slice(0, 500) : []) {
+    try { repayments.push(cleanRepayment(r)); } catch { /* ungültige überspringen */ }
+  }
+  return migrateTrip({ id: id(input.id), ...meta, days, items, repayments, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
 }
 
 export function cleanSettings(b, current) {
