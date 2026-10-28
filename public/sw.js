@@ -3,7 +3,7 @@
 //   bei Ausfall oder langsamer Verbindung (> 4 s) aus dem Cache.
 // - Belege (/api/files/…): einmal geladen, kommen sie aus dem Cache – sie ändern sich nie.
 // - Alle anderen API-Aufrufe gehen immer ans Netz; den Offline-Datenstand verwaltet die App selbst (IndexedDB).
-const SHELL = 'reisli-shell-v5';
+const SHELL = 'reisli-shell-__VERSION__'; // setzt der Server (Version aus package.json)
 const FILES = 'reisli-files';
 const ASSETS = [
   '/', '/index.html', '/styles.css', '/manifest.webmanifest',

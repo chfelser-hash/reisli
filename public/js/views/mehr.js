@@ -8,7 +8,7 @@ import { templatesCard } from './packliste.js';
 
 export function renderMehr() {
   const view = h('div', { class: 'view mehr' },
-    h('div', { class: 'settings-grid' }, methodsCard(), templatesCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
+    h('div', { class: 'settings-grid' }, aboutCard(), methodsCard(), templatesCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
     h('div', { class: 'row gap wrap' },
       h('button', { class: 'btn ghost', onclick: async () => {
         if (state.outbox.length && !(await confirmDialog('Abmelden', `${state.outbox.length} offline erfasste Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Trotzdem abmelden?`, 'Abmelden', true))) return;
@@ -242,5 +242,25 @@ function backupCard() {
     h('div', { class: 'row gap sep' }, h('h3', null, 'Sicherungen auf dem Server'), h('span', { class: 'spacer' }),
       h('button', { class: 'btn small', onclick: async () => { await api('POST', '/api/backups'); loadList(); toast('Sicherung erstellt'); } }, 'Jetzt sichern')),
     listEl
+  );
+}
+
+// ---------- Über Reisli: Version und Änderungen ----------
+function aboutCard() {
+  const v = state.data.version || '?';
+  const list = h('div', { class: 'changelog' });
+  const det = h('details', { ontoggle: async () => {
+    if (!det.open || list.childElementCount) return;
+    try {
+      const { changelog } = await api('GET', '/api/changelog');
+      list.replaceChildren(...changelog.map((c) => h('div', { class: 'cl-entry' },
+        h('strong', null, c.version), h('span', { class: 'muted small' }, ' · ' + fmtDate(c.date)),
+        h('ul', null, c.changes.map((x) => h('li', null, x))))));
+    } catch (ex) { list.replaceChildren(h('p', { class: 'muted small' }, ex.message)); }
+  } }, h('summary', null, 'Was ist neu?'), list);
+  return card('about', 'Über Reisli',
+    h('p', null, h('strong', null, `Version ${v}`), state.data.versionDate ? h('span', { class: 'muted' }, ` · ${fmtDate(state.data.versionDate)}`) : null),
+    h('p', { class: 'muted small' }, 'Läuft auf dem Reisli-Server (NAS). Nach einem Update meldet die App «Neue Version verfügbar».'),
+    det
   );
 }

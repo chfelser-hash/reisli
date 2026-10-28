@@ -18,6 +18,21 @@ const PORT = Number(process.env.PORT || 8081);
 const HOST = process.env.HOST || '0.0.0.0';
 const AUTO_RATES = process.env.AUTO_RATES !== 'false';
 const MAX_FILE = 15 * 1024 * 1024;
+// Version aus package.json, Änderungsliste aus CHANGELOG.md
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+function readChangelog() {
+  try {
+    const out = [];
+    for (const line of fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^##\s+(\S+)\s+[–-]\s+(\d{4}-\d{2}-\d{2})/);
+      if (m) out.push({ version: m[1], date: m[2], changes: [] });
+      else if (out.length && /^\s*-\s+/.test(line)) out[out.length - 1].changes.push(line.replace(/^\s*-\s+/, ''));
+    }
+    return out;
+  } catch { return []; }
+}
+const CHANGELOG = readChangelog();
+const VERSION_DATE = CHANGELOG.find((x) => x.version === VERSION)?.date || '';
 
 fs.mkdirSync(FILES_DIR, { recursive: true });
 const store = new Store(DATA_DIR);
@@ -99,7 +114,7 @@ const attachment = (name) => `attachment; filename="${name.replace(/[^\w.\- ]/g,
 
 function publicData(user) {
   const d = store.data;
-  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, documents: d.documents, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES, rateUrl: RATE_URLS[0] };
+  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, documents: d.documents, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES, rateUrl: RATE_URLS[0], version: VERSION, versionDate: VERSION_DATE };
 }
 
 function findTrip(d, tripId) {
@@ -211,7 +226,7 @@ async function api(req, res, url) {
 
   if (p === '/api/status' && method === 'GET') {
     const user = auth.userForToken(cookies(req).rsid);
-    return send(res, 200, { needsSetup: !auth.hasUsers, user });
+    return send(res, 200, { needsSetup: !auth.hasUsers, user, version: VERSION });
   }
   if (p === '/api/setup' && method === 'POST') {
     if (auth.hasUsers) throw httpError(403, 'Bereits eingerichtet');
@@ -235,7 +250,8 @@ async function api(req, res, url) {
   if (!user) throw httpError(401, 'Nicht angemeldet');
 
   if (p === '/api/data' && method === 'GET') return send(res, 200, publicData(user));
-  if (p === '/api/rev' && method === 'GET') return send(res, 200, { rev: store.rev });
+  if (p === '/api/rev' && method === 'GET') return send(res, 200, { rev: store.rev, version: VERSION });
+  if (p === '/api/changelog' && method === 'GET') return send(res, 200, { version: VERSION, date: VERSION_DATE, changelog: CHANGELOG.slice(0, 20) });
 
   // ----- Reisen -----
   if (p === '/api/trips' && method === 'POST') {
@@ -712,6 +728,8 @@ function serveStatic(req, res, url) {
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, 'Nicht gefunden');
     const ext = path.extname(file);
+    // Service Worker: Cache-Name an die Version koppeln → jede neue Version lädt die Oberfläche frisch
+    if (rel === '/sw.js') buf = Buffer.from(buf.toString('utf8').replaceAll('__VERSION__', VERSION));
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       // HTML/JS/CSS immer frisch prüfen, damit Updates sofort ankommen

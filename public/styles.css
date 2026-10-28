@@ -815,3 +815,5 @@ a.contact { color: var(--accent); }
 .help summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--ink-2); }
 .help ul { margin: .3rem 0; padding-left: 1.1rem; }
 .help p { margin: .35rem 0; }
+.changelog .cl-entry { margin-top: .6rem; }
+.changelog ul { margin: .2rem 0 0; padding-left: 1.1rem; font-size: .88rem; }

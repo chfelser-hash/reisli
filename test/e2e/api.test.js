@@ -47,6 +47,10 @@ test('Bargeld: Bezug idempotent, ungültige Beträge abgelehnt', async () => {
   await api('POST', `/api/trips/${trip.id}/cash`, e);
   await api('POST', `/api/trips/${trip.id}/cash`, e);
   assert.equal((await api('POST', `/api/trips/${trip.id}/cash`, { kind: 'bezug', amount: 0, currency: 'THB' })).status, 400);
+  // ohne CHF-Betrag bleibt er leer (nicht 0)
+  const noChf = await api('POST', `/api/trips/${trip.id}/cash`, { kind: 'bezug', date: day(0), amount: 100, currency: 'THB', chf: null });
+  assert.equal(noChf.data.entry.chf, null);
+  await api('DELETE', `/api/trips/${trip.id}/cash/${noChf.data.entry.id}`);
   const { data } = await api('GET', '/api/data');
   assert.equal(data.trips[0].cash.length, 1);
 });
@@ -78,4 +82,14 @@ test('Reise löschen legt vorher eine Sicherung an', async () => {
   const { data } = await api('POST', '/api/trips', { name: 'Wegwerfreise', start: day(30), end: day(35), currency: 'EUR' });
   const del = await api('DELETE', '/api/trips/' + data.trip.id);
   assert.match(del.data.backup, /vor-loeschen-Wegwerfreise/);
+});
+
+test('Version: /api/status, /api/rev und Service Worker kennen die Version', async () => {
+  const st = await (await fetch(srv.base + '/api/status')).json();
+  assert.match(st.version, /^\d+\.\d+\.\d+$/);
+  assert.equal((await api('GET', '/api/rev')).data.version, st.version);
+  const sw = await (await fetch(srv.base + '/sw.js')).text();
+  assert.ok(sw.includes(`reisli-shell-${st.version}`));
+  const log = (await api('GET', '/api/changelog')).data;
+  assert.equal(log.changelog[0].version, st.version);
 });

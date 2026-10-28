@@ -84,7 +84,8 @@ export function modal(title, content, buttons = [{ label: 'Schliessen' }]) {
     document.body.append(dlg);
     dlg.showModal();
     const first = dlg.querySelector('input,select,textarea');
-    if (first) setTimeout(() => first.focus(), 30);
+    // Erstes Feld fokussieren – aber nicht, wenn schon in ein anderes Feld getippt wird
+    if (first) setTimeout(() => { const a = document.activeElement; if (!a || a === dlg || a === document.body || !dlg.contains(a) || a.tagName === 'BUTTON') first.focus(); }, 30);
   });
 }
 

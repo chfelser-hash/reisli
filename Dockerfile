@@ -6,7 +6,7 @@ ENV NODE_ENV=production \
 
 RUN apk add --no-cache su-exec
 WORKDIR /app
-COPY package.json ./
+COPY package.json CHANGELOG.md ./
 COPY server ./server
 COPY public ./public
 COPY scripts ./scripts

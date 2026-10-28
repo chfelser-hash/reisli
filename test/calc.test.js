@@ -303,3 +303,13 @@ test('Bargeld-Kasse: Bezüge minus bar bezahlte Ausgaben, effektiver Kurs, Korre
   assert.ok(Math.abs(w[0].rate - 0.0262) < 1e-9);
   assert.ok(isCashMethod({ name: 'Bargeld' }) && !isCashMethod({ name: 'Bargeld', cash: false }) && isCashMethod({ name: 'Portemonnaie', cash: true }));
 });
+
+test('Version: package.json und oberster CHANGELOG-Eintrag stimmen überein', async () => {
+  const fs = await import('node:fs');
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const log = fs.readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+  const top = log.match(/^##\s+(\S+)\s+[–-]\s+(\d{4}-\d{2}-\d{2})/m);
+  assert.ok(top, 'CHANGELOG.md braucht einen Eintrag «## Version – Datum»');
+  assert.equal(top[1], pkg.version, 'Neue Version: package.json und CHANGELOG.md gemeinsam anpassen');
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
+});

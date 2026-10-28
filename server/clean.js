@@ -121,7 +121,7 @@ export function cleanCash(c) {
   const kind = CASH_KINDS.includes(c.kind) ? c.kind : 'bezug';
   const amount = num(c.amount);
   if (kind === 'korrektur' ? !amount : !(amount > 0)) throw httpError(400, 'Betrag ungültig');
-  const chf = Number(c.chf);
+  const chf = c.chf === null || c.chf === undefined || c.chf === '' ? NaN : Number(c.chf);
   return {
     id: id(c.id),
     date: optDate(c.date),

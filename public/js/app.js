@@ -462,7 +462,7 @@ export function render() {
 function renderChrome(activeTab) {
   const header = document.getElementById('topbar');
   header.replaceChildren(
-    h('a', { class: 'brand', href: '#plan' }, h('img', { class: 'logo', src: '/icons/icon.svg', alt: '' }), h('span', null, 'Reisli')),
+    h('a', { class: 'brand', href: '#plan', title: state.data.version ? `Reisli ${state.data.version}` : 'Reisli' }, h('img', { class: 'logo', src: '/icons/icon.svg', alt: '' }), h('span', null, 'Reisli')),
     h('nav', { class: 'tabs' },
       VIEWS.filter((v) => !v.hidden && (!v.when || v.when() || activeTab === v.id)).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', { class: 'tl' }, v.label), h('span', { class: 'tl-short' }, v.short || v.label)))
     ),
@@ -582,7 +582,12 @@ function startPolling() {
     if (document.hidden || !state.data || state.busy || document.querySelector('dialog[open]')) return;
     if (state.outbox.length) { await sync(); if (state.outbox.length) return; }
     try {
-      const { rev } = await api('GET', '/api/rev');
+      const { rev, version } = await api('GET', '/api/rev');
+      // Auf der NAS wurde eine neue Version eingespielt → einmal Bescheid geben
+      if (version && state.loadedVersion && version !== state.loadedVersion && !state.versionNotified) {
+        state.versionNotified = true;
+        toast(`Neue Reisli-Version ${version} verfügbar`, { duration: 60000, action: { label: 'Neu laden', fn: () => location.reload() } });
+      }
       if (rev !== state.data.rev) {
         await reload();
         render();
@@ -617,6 +622,7 @@ async function start() {
     if (snap?.user && snap.user.name !== st.user.name) { await clearLocal(); state.outbox = []; state.conflicts = []; }
   }
   await reload();
+  state.loadedVersion = state.data.version;
   state.view = location.hash.slice(1) || defaultView();
   render();
   startPolling();
