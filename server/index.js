@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, newId, migrateTrip } from './store.js';
 import { Auth, httpError } from './auth.js';
-import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, isDate, str } from './clean.js';
+import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, cleanDocument, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
@@ -99,7 +99,7 @@ const attachment = (name) => `attachment; filename="${name.replace(/[^\w.\- ]/g,
 
 function publicData(user) {
   const d = store.data;
-  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES, rateUrl: RATE_URLS[0] };
+  return { rev: d.rev, updatedAt: d.updatedAt, trips: d.trips, documents: d.documents, settings: d.settings, user, users: auth.listUsers(), knownCurrencies: KNOWN, autoRates: AUTO_RATES, rateUrl: RATE_URLS[0] };
 }
 
 function findTrip(d, tripId) {
@@ -127,6 +127,7 @@ function cleanupFiles() {
   const used = new Set();
   const collect = (data) => {
     for (const t of data?.trips || []) for (const it of t.items || []) for (const f of it.files || []) if (f?.id) used.add(f.id);
+    for (const doc of data?.documents || []) for (const f of doc.files || []) if (f?.id) used.add(f.id);
   };
   collect(store.data);
   for (const b of store.listBackups()) {
@@ -151,11 +152,12 @@ function cleanupFiles() {
 
 /** Komplette Sicherung, optional inkl. Belege (Base64) */
 function backupPayload(withFiles) {
-  const { trips, settings } = store.data;
-  const out = { app: 'reisli', schema: 1, exportedAt: new Date().toISOString(), trips, settings };
+  const { trips, settings, documents } = store.data;
+  const out = { app: 'reisli', schema: 1, exportedAt: new Date().toISOString(), trips, documents, settings };
   if (withFiles) {
     out.files = {};
-    for (const t of trips) for (const it of t.items) for (const f of it.files || []) {
+    const all = [...trips.flatMap((t) => t.items.flatMap((it) => it.files || [])), ...documents.flatMap((doc) => doc.files || [])];
+    for (const f of all) {
       try {
         out.files[f.id] = fs.readFileSync(filePath(f.id)).toString('base64');
       } catch { /* fehlende Datei überspringen */ }
@@ -427,10 +429,59 @@ async function api(req, res, url) {
     });
     return send(res, 200, { rev: store.rev });
   }
+  // ----- Allgemeine Reisedokumente -----
+  if (p === '/api/documents' && method === 'POST') {
+    const b = await readBody(req);
+    const doc = store.mutate((d) => {
+      const x = cleanDocument(b, user);
+      d.documents.push(x);
+      return x;
+    });
+    return send(res, 200, { rev: store.rev, document: doc });
+  }
+  m = p.match(/^\/api\/documents\/([\w-]+)$/);
+  const findDoc = (d, docId) => {
+    const x = d.documents.find((y) => y.id === docId);
+    if (!x) throw httpError(404, 'Dokument nicht gefunden');
+    return x;
+  };
+  if (m && method === 'PUT') {
+    const b = await readBody(req);
+    const doc = store.mutate((d) => {
+      const cur = findDoc(d, m[1]);
+      const x = cleanDocument(b, user, cur);
+      d.documents[d.documents.indexOf(cur)] = x;
+      return x;
+    });
+    return send(res, 200, { rev: store.rev, document: doc });
+  }
+  if (m && method === 'DELETE') {
+    store.mutate((d) => (d.documents = d.documents.filter((x) => x.id !== m[1])));
+    return send(res, 200, { rev: store.rev });
+  }
+  m = p.match(/^\/api\/documents\/([\w-]+)\/files$/);
+  if (m && method === 'POST') {
+    const buf = await readRaw(req, MAX_FILE);
+    if (!buf.length) throw httpError(400, 'Leere Datei');
+    const meta = { id: newId(), name: fileName(req), size: buf.length, type: str(req.headers['content-type'], 80) || 'application/octet-stream', at: new Date().toISOString(), by: user.name };
+    findDoc(store.data, m[1]);
+    fs.writeFileSync(filePath(meta.id), buf);
+    store.mutate((d) => findDoc(d, m[1]).files.push(meta));
+    return send(res, 200, { rev: store.rev, file: meta });
+  }
+  m = p.match(/^\/api\/documents\/([\w-]+)\/files\/([\w-]+)$/);
+  if (m && method === 'DELETE') {
+    store.mutate((d) => {
+      const doc = findDoc(d, m[1]);
+      doc.files = doc.files.filter((f) => f.id !== m[2]);
+    });
+    return send(res, 200, { rev: store.rev });
+  }
   m = p.match(/^\/api\/files\/([\w-]+)$/);
   if (m && method === 'GET') {
     let meta = null;
     for (const t of store.data.trips) for (const it of t.items) for (const f of it.files || []) if (f.id === m[1]) meta = f;
+    for (const doc of store.data.documents) for (const f of doc.files || []) if (f.id === m[1]) meta = f;
     if (!meta) throw httpError(404, 'Beleg nicht gefunden');
     const buf = fs.readFileSync(filePath(meta.id));
     const inline = /^(image\/|application\/pdf)/.test(meta.type) && url.searchParams.get('download') !== '1';
@@ -557,7 +608,8 @@ async function api(req, res, url) {
     }
     if (!b || !Array.isArray(b.trips) || typeof b.settings !== 'object') throw httpError(400, 'Keine gültige Reisli-Sicherung');
     const trips = b.trips.map((t) => cleanTrip(t, user));
-    store.replaceAll({ trips, settings: cleanSettings(b.settings, store.data.settings) });
+    const documents = Array.isArray(b.documents) ? b.documents.flatMap((x) => { try { return [{ ...cleanDocument(x, user), files: Array.isArray(x.files) ? x.files.filter((f) => f && /^[\w-]+$/.test(f.id)).map((f) => ({ id: f.id, name: str(f.name, 160), size: Number(f.size) || 0, type: str(f.type, 80) })) : [] }]; } catch { return []; } }) : store.data.documents;
+    store.replaceAll({ trips, documents, settings: cleanSettings(b.settings, store.data.settings) });
     const files = restoreFiles(b.files);
     return send(res, 200, { rev: store.rev, mode: 'all', trips: trips.length, files });
   }

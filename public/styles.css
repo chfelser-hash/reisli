@@ -698,3 +698,15 @@ a.contact { color: var(--accent); }
 @media (max-width: 420px) { .grid3 { grid-template-columns: 1fr; } }
 .cur-pick .chips { margin: 0; }
 .cur-more { border: 1px solid var(--line); background: var(--card); color: var(--ink-2); border-radius: 999px; padding: .3rem .6rem; font: inherit; font-size: .85rem; }
+
+/* ---------- Reisedokumente ---------- */
+.dokumente { max-width: 760px; margin: 0 auto; }
+.docs { list-style: none; margin: .4rem 0 0; padding: 0; }
+.doc-row { display: grid; grid-template-columns: 2rem 1fr; gap: .5rem; padding: .65rem 0; border-top: 1px solid var(--line-2); }
+.doc-row:first-child { border-top: 0; }
+.doc-icon { font-size: 1.35rem; line-height: 1.2; }
+.doc-title { font-weight: 650; }
+.doc-valid.warn { color: var(--warn); }
+.doc-valid.bad { color: var(--neg); font-weight: 650; }
+.doc-note { white-space: pre-wrap; color: var(--ink-2); }
+.docs.compact .doc-row { padding: .45rem 0; }

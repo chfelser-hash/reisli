@@ -9,6 +9,7 @@ import { renderMehr } from './views/mehr.js';
 import { renderReise } from './views/reise.js';
 import { newTripDialog } from './views/newtrip.js';
 import { renderHeute, syncDialog, tripRunning } from './views/heute.js';
+import { renderDokumente } from './views/dokumente.js';
 import { kvGet, kvSet, kvDel } from './idb.js';
 
 export const state = {
@@ -42,6 +43,7 @@ const VIEWS = [
   { id: 'mehr', label: 'Mehr', render: renderMehr },
   // Ohne eigenen Tab (über ✎ im Plan erreichbar)
   { id: 'reise', label: 'Reise bearbeiten', render: renderReise, hidden: true, tab: 'plan' },
+  { id: 'dokumente', label: 'Reisedokumente', render: () => renderDokumente(), hidden: true, tab: 'mehr' },
 ];
 const icon = (id) => s('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': id === 'mehr' ? 3.2 : 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }, s('path', { d: ICONS[id] }));
 

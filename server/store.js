@@ -113,6 +113,9 @@ export function migrate(d) {
     USD: { rate: 0.8, source: 'manuell' },
   };
   for (const t of out.trips) migrateTrip(t);
+  // Allgemeine Reisedokumente (Pass, Krankenkasse, Brevets …) – gelten für alle Reisen
+  out.documents = Array.isArray(out.documents) ? out.documents : [];
+  for (const doc of out.documents) doc.files = Array.isArray(doc.files) ? doc.files : [];
   return out;
 }
 

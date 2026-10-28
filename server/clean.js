@@ -160,3 +160,24 @@ export function cleanSettings(b, current) {
   }
   return out;
 }
+
+export const DOC_KINDS = ['pass', 'id', 'krankenkasse', 'versicherung', 'tauchen', 'fuehrerschein', 'impfung', 'visum', 'notfall', 'sonstiges'];
+/** Allgemeines Reisedokument; Dateien nur über die Datei-API */
+export function cleanDocument(input, user, existing = {}) {
+  const title = str(input.title, 120).trim();
+  if (!title) throw httpError(400, 'Bezeichnung fehlt');
+  return {
+    id: existing.id || id(input.id),
+    title,
+    kind: DOC_KINDS.includes(input.kind) ? input.kind : 'sonstiges',
+    person: str(input.person, 60).trim(),
+    number: str(input.number, 80).trim(),
+    validUntil: optDate(input.validUntil),
+    phone: str(input.phone, 40).trim(),
+    note: str(input.note, 2000),
+    files: existing.files || [],
+    by: existing.by || user?.name || '',
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: existing.id ? new Date().toISOString() : undefined,
+  };
+}

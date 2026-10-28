@@ -4,10 +4,11 @@ import { h, toast, confirmDialog } from '../ui.js';
 import { state, api, reload, render, settings, selectTrip, download, refreshRates, replaceMethodDialog, clearLocal } from '../app.js';
 import { fmt0, fmtCur, fmtDate, methodUsage } from '../calc.js';
 import { card, uid, saveSettings } from './shared.js';
+import { validity } from './dokumente.js';
 
 export function renderMehr() {
   const view = h('div', { class: 'view mehr' },
-    h('div', { class: 'settings-grid' }, methodsCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
+    h('div', { class: 'settings-grid' }, docsCard(), methodsCard(), categoriesCard(), ratesCard(), usersCard(), backupCard()),
     h('div', { class: 'row gap wrap' },
       h('button', { class: 'btn ghost', onclick: async () => {
         if (state.outbox.length && !(await confirmDialog('Abmelden', `${state.outbox.length} offline erfasste Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Trotzdem abmelden?`, 'Abmelden', true))) return;
@@ -238,5 +239,16 @@ function backupCard() {
     h('div', { class: 'row gap sep' }, h('h3', null, 'Sicherungen auf dem Server'), h('span', { class: 'spacer' }),
       h('button', { class: 'btn small', onclick: async () => { await api('POST', '/api/backups'); loadList(); toast('Sicherung erstellt'); } }, 'Jetzt sichern')),
     listEl
+  );
+}
+
+// ---------- Reisedokumente (eigene Seite) ----------
+function docsCard() {
+  const list = state.data.documents || [];
+  const warn = list.filter((d) => validity(d).level).length;
+  return card('docs', 'Reisedokumente',
+    h('p', { class: 'muted small' }, 'Pässe, Krankenkasse, Versicherungen, Tauchbrevets, Notfallnummern – für alle Reisen, auch offline.'),
+    h('p', null, list.length ? `${list.length} Dokument${list.length === 1 ? '' : 'e'}` : 'Noch keine erfasst.', warn ? h('span', { class: 'warn' }, ` · ⚠ ${warn} prüfen`) : null),
+    h('a', { class: 'btn', href: '#dokumente' }, 'Öffnen')
   );
 }

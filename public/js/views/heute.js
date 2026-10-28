@@ -8,8 +8,8 @@ import {
   placeFor, stayFor, dayCurrency, allowanceMap, tripSummary, cashPlan, rateOf, fromCHF,
 } from '../calc.js';
 import { editItem, catDot } from './item.js';
+import { documentFiles, docsCompact, cacheFiles, countCached } from './dokumente.js';
 
-const FILES_CACHE = 'reisli-files';
 
 /** Läuft die Reise (oder beginnt sie in den nächsten «lead» Tagen)? */
 export function tripRunning(t, lead = 0) {
@@ -82,7 +82,7 @@ export function renderHeute() {
     ));
   }
 
-  view.append(budgetCard(S, t, date, today), receiptsCard(t), offlineCard());
+  view.append(budgetCard(S, t, date, today), ...receiptsCard(t), offlineCard());
   return view;
 }
 
@@ -163,10 +163,10 @@ function budgetCard(S, t, date, today) {
   );
 }
 
-// ----- Belege -----
+// ----- Belege & Dokumente -----
 function receiptsCard(t) {
   const withFiles = (t.items || []).filter((it) => it.files?.length).sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
-  const files = withFiles.flatMap((it) => it.files);
+  const files = [...withFiles.flatMap((it) => it.files), ...documentFiles()];
   const status = h('span', { class: 'muted small' });
   const list = h('ul', { class: 'receipts' }, withFiles.map((it) => h('li', null,
     h('span', { class: 'muted small r-date' }, fmtDay(it.date)),
@@ -174,44 +174,20 @@ function receiptsCard(t) {
   )));
   const btn = h('button', { class: 'btn small', onclick: () => cacheFiles(files, status, btn) }, 'Alle offline speichern');
   if (files.length) countCached(files).then((k) => {
-    status.textContent = `${k} von ${files.length} offline verfügbar`;
+    status.textContent = `${k} von ${files.length} Dateien (Belege + Dokumente) offline verfügbar`;
     if (k === files.length) btn.textContent = 'Aktualisieren';
   });
-  return h('section', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', null, `Belege & Tickets`), files.length && 'caches' in window ? btn : null),
-    files.length ? status : null,
-    files.length ? list : h('p', { class: 'muted' }, 'Noch keine Belege. Im Posten unter «Belege» Tickets, Buchungsbestätigungen usw. anhängen.')
-  );
-}
-
-async function countCached(files) {
-  if (!('caches' in window)) return 0;
-  try {
-    const c = await caches.open(FILES_CACHE);
-    const hits = await Promise.all(files.map((f) => c.match('/api/files/' + f.id)));
-    return hits.filter(Boolean).length;
-  } catch { return 0; }
-}
-
-/** Alle Belege einer Reise in den Gerätespeicher laden, damit sie unterwegs ohne Verbindung aufgehen */
-export async function cacheFiles(files, statusEl, btn) {
-  if (!('caches' in window)) return toast('Dieser Browser kann keine Belege offline speichern (HTTPS nötig).', { error: true });
-  try { await navigator.storage?.persist?.(); } catch { /* egal */ }
-  btn.disabled = true;
-  const c = await caches.open(FILES_CACHE);
-  let ok = 0, fail = 0;
-  for (const f of files) {
-    try {
-      const res = await fetch('/api/files/' + f.id, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error();
-      await c.put('/api/files/' + f.id, res);
-      ok++;
-    } catch { fail++; }
-    statusEl.textContent = `${ok} von ${files.length} gespeichert${fail ? ` · ${fail} fehlgeschlagen` : ''} …`;
-  }
-  btn.disabled = false;
-  statusEl.textContent = fail ? `${ok} von ${files.length} offline verfügbar · ${fail} nicht erreichbar` : `Alle ${ok} Belege offline verfügbar`;
-  toast(fail ? 'Nicht alle Belege konnten geladen werden' : 'Belege offline gespeichert', fail ? { error: true } : {});
+  return [
+    h('section', { class: 'card' },
+      h('div', { class: 'card-head' }, h('h2', null, 'Belege & Tickets'), files.length && 'caches' in window ? btn : null),
+      files.length ? status : null,
+      withFiles.length ? list : h('p', { class: 'muted' }, 'Noch keine Belege. Im Posten unter «Belege» Tickets, Buchungsbestätigungen usw. anhängen.')
+    ),
+    h('section', { class: 'card' },
+      h('div', { class: 'card-head' }, h('h2', null, 'Reisedokumente'), h('a', { class: 'btn small ghost', href: '#dokumente' }, 'Alle')),
+      docsCompact()
+    ),
+  ];
 }
 
 // ----- Offline-Status -----
