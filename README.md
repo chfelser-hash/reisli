@@ -90,7 +90,7 @@ Gleich wie Kässeli – **Container Manager** (DSM 7.2):
    - Erstellen – das Image wird auf der NAS gebaut und gestartet.
 3. Aufruf im Heimnetz: `http://<IP-der-NAS>:8081`, erstes Konto anlegen, dann unter **Mehr → Benutzer** die zweite Person hinzufügen.
 
-Die Daten liegen in `/docker/reisli/data` (Reisen, Belege, tägliche Sicherungen) und werden von Hyper Backup mitgesichert, wenn der Ordner `docker` im Backup-Job ist.
+Die Daten liegen in `/docker/reisli/data` (Reisen, Belege, tägliche Sicherungen) und werden von Hyper Backup mitgesichert, wenn der Ordner `docker` im Backup-Job ist – empfohlen, denn das schützt auch vor einem Ausfall der NAS.
 
 **Zugriff:** Vorerst nur im Heimnetz oder per VPN. Für späteren Zugriff von unterwegs (HTTPS über Reverse Proxy) siehe Anleitung im Kässeli-README – bei Reisli Port 8081 verwenden und in `docker-compose.yml` `COOKIE_SECURE=true` setzen.
 
@@ -101,6 +101,8 @@ Die Daten liegen in `/docker/reisli/data` (Reisen, Belege, tägliche Sicherungen
 ## 4. Sicherung
 
 - **Automatisch:** Bei der ersten Änderung des Tages wird `data/backups/reisli-JJJJ-MM-TT.json` angelegt, 30 Tage aufbewahrt.
+- **Belege** (`data/files/`) werden nicht in jede Sicherung kopiert, sondern genau einmal aufbewahrt – solange der aktuelle Stand oder irgendeine Sicherung noch darauf verweist. Gelöschte Belege kommen mit einer Wiederherstellung also zurück, ohne dass Platz doppelt belegt wird. Einmal täglich räumt der Server Belege ohne Verweis auf. Platzbedarf siehe **Mehr → Sicherung**.
+- **Vor dem Löschen einer Reise** wird zusätzlich `vor-loeschen-<Reise>-….json` angelegt.
 - **Vor jeder Wiederherstellung** wird der aktuelle Stand zusätzlich gesichert (`vor-wiederherstellung-…`).
 - **Mehr → Sicherung:**
   - «Sicherung herunterladen» – alle Reisen und Einstellungen als JSON (klein, z.B. vor der Abreise aufs Handy).

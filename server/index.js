@@ -117,12 +117,36 @@ const filePath = (fileId) => {
   if (!/^[\w-]{1,40}$/.test(fileId)) throw httpError(400, 'Ungültige Datei');
   return path.join(FILES_DIR, fileId);
 };
-function removeFiles(list) {
-  for (const f of list || []) {
-    try {
-      fs.unlinkSync(filePath(f.id));
-    } catch { /* schon weg */ }
+/**
+ * Belege werden beim Löschen NICHT sofort entfernt: Belege ändern sich nie, darum genügt eine einzige Kopie,
+ * solange der aktuelle Stand oder irgendeine Sicherung in data/backups noch darauf verweist. So stellt jede
+ * Wiederherstellung auch die Belege wieder her – ohne dass etwas doppelt gespeichert wird.
+ *
+ * Löscht Belege, auf die weder der aktuelle Stand noch eine Sicherung verweist (und die älter als 2 Tage sind). */
+function cleanupFiles() {
+  const used = new Set();
+  const collect = (data) => {
+    for (const t of data?.trips || []) for (const it of t.items || []) for (const f of it.files || []) if (f?.id) used.add(f.id);
+  };
+  collect(store.data);
+  for (const b of store.listBackups()) {
+    try { collect(store.readBackup(b.name)); } catch { /* defekte Sicherung: zur Sicherheit nichts löschen */ return { removed: 0, skipped: true }; }
   }
+  let removed = 0, bytes = 0;
+  const minAge = Date.now() - 2 * 864e5;
+  for (const name of fs.readdirSync(FILES_DIR)) {
+    if (used.has(name) || !/^[\w-]{1,40}$/.test(name)) continue;
+    const file = path.join(FILES_DIR, name);
+    try {
+      const st = fs.statSync(file);
+      if (st.mtimeMs > minAge) continue;
+      fs.unlinkSync(file);
+      removed++;
+      bytes += st.size;
+    } catch { /* egal */ }
+  }
+  if (removed) console.log(`Belege aufgeräumt: ${removed} Datei(en), ${Math.round(bytes / 1024)} KB`);
+  return { removed, bytes };
 }
 
 /** Komplette Sicherung, optional inkl. Belege (Base64) */
@@ -344,7 +368,6 @@ async function api(req, res, url) {
     store.mutate((d) => {
       const t = findTrip(d, m[1]);
       const it = findItem(t, m[2]);
-      removeFiles(it.files);
       t.items = t.items.filter((x) => x.id !== m[2]);
     });
     return send(res, 200, { rev: store.rev });
@@ -384,7 +407,6 @@ async function api(req, res, url) {
   if (m && method === 'DELETE') {
     store.mutate((d) => {
       const it = findItem(findTrip(d, m[1]), m[2]);
-      removeFiles(it.files.filter((f) => f.id === m[3]));
       it.files = it.files.filter((f) => f.id !== m[3]);
     });
     return send(res, 200, { rev: store.rev });
@@ -523,7 +545,13 @@ async function api(req, res, url) {
     const files = restoreFiles(b.files);
     return send(res, 200, { rev: store.rev, mode: 'all', trips: trips.length, files });
   }
-  if (p === '/api/backups' && method === 'GET') return send(res, 200, { backups: store.listBackups() });
+  if (p === '/api/backups' && method === 'GET') {
+    let filesBytes = 0, filesCount = 0;
+    for (const n of fs.readdirSync(FILES_DIR)) {
+      try { filesBytes += fs.statSync(path.join(FILES_DIR, n)).size; filesCount++; } catch { /* egal */ }
+    }
+    return send(res, 200, { backups: store.listBackups(), files: { count: filesCount, bytes: filesBytes } });
+  }
   if (p === '/api/backups' && method === 'POST') {
     const name = store.snapshot('manuell');
     return send(res, 200, { name, backups: store.listBackups() });
@@ -586,6 +614,10 @@ server.listen(PORT, HOST, () => {
   console.log(`Reisli läuft auf http://localhost:${PORT}  (Daten: ${DATA_DIR})`);
   if (!auth.hasUsers) console.log('Noch kein Benutzer vorhanden – beim ersten Aufruf wird ein Konto angelegt.');
 });
+
+// Belege aufräumen: kurz nach dem Start und danach täglich
+setTimeout(() => { try { cleanupFiles(); } catch (e) { console.log('Belege aufräumen fehlgeschlagen:', e.message); } }, 15000).unref();
+setInterval(() => { try { cleanupFiles(); } catch (e) { console.log('Belege aufräumen fehlgeschlagen:', e.message); } }, 24 * 3600e3).unref();
 
 // Kurse beim Start und danach alle 6 Stunden prüfen (holt höchstens einmal pro Tag)
 if (AUTO_RATES) {

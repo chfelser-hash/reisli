@@ -179,8 +179,10 @@ function backupCard() {
   const listEl = h('div', null, h('p', { class: 'muted small' }, 'Lädt …'));
   const loadList = async () => {
     try {
-      const { backups } = await api('GET', '/api/backups');
-      listEl.replaceChildren(backups.length ? h('ul', { class: 'backup-list' }, backups.slice(0, 20).map((b) => h('li', null,
+      const { backups, files } = await api('GET', '/api/backups');
+      const kb = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+      const usage = h('p', { class: 'muted small' }, `Platzbedarf: ${backups.length} Sicherungen ${kb(backups.reduce((a, b) => a + b.size, 0))} · ${files?.count || 0} Belege ${kb(files?.bytes || 0)}`);
+      listEl.replaceChildren(usage, backups.length ? h('ul', { class: 'backup-list' }, backups.slice(0, 20).map((b) => h('li', null,
         h('span', null, h('span', null, b.name.replace(/\.json$/, '')), h('span', { class: 'muted small' }, ` ${fmt0(b.size / 1024)} KB`)),
         h('span', { class: 'row-actions' },
           h('button', { class: 'link', onclick: () => download('/api/backups/' + encodeURIComponent(b.name)) }, 'laden'),
@@ -221,7 +223,7 @@ function backupCard() {
     }
   } });
   return card('backup', 'Sicherung',
-    h('p', { class: 'muted small' }, 'Der Server sichert automatisch einmal täglich (30 Tage). Zusätzlich kannst du jederzeit eine Datei herunterladen – z.B. vor der Abreise aufs Handy oder in die Cloud.'),
+    h('p', { class: 'muted small' }, 'Der Server sichert automatisch einmal täglich (30 Tage). Belege werden dabei nicht kopiert, aber so lange aufbewahrt, wie eine Sicherung sie braucht – eine Wiederherstellung bringt also auch gelöschte Belege zurück. Zusätzlich kannst du jederzeit eine Datei herunterladen, z.B. vor der Abreise aufs Handy oder in die Cloud.'),
     h('div', { class: 'row gap wrap' },
       h('button', { class: 'btn primary', onclick: () => download('/api/backup') }, '⬇ Sicherung herunterladen'),
       h('button', { class: 'btn', onclick: () => download('/api/backup?files=1') }, '⬇ inkl. Belege'),
