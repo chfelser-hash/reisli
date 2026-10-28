@@ -75,11 +75,47 @@ export function fileThumbs(files) {
 // Für Belege in «Heute» weiterhin mit Namen
 export const fileChips = (files) => (files?.length ? h('div', { class: 'file-chips' }, files.map((f) => h('a', { class: 'file-chip', href: '/api/files/' + f.id, target: '_blank', rel: 'noopener' }, '📎 ', f.name))) : null);
 
-function docTable(gs) {
-  return h('div', { class: 'doc-groups' }, gs.map((g) => h('section', { class: 'doc-group' },
-    h('h3', null, h('span', { 'aria-hidden': 'true' }, g.icon), ` ${g.plural} `, h('span', { class: 'muted' }, `(${g.docs.length})`)),
-    h('div', { class: 'doc-table' }, g.docs.map((d, i) => docRow(d, i === 0 || g.docs[i - 1].person !== d.person)))
-  )));
+// Eingeklappte Gruppen merkt sich das Gerät – getrennt für den Reiter und für «Heute»
+const COLLAPSE_KEY = (ctx) => 'reisli.docs.collapsed.' + ctx;
+function loadCollapsed(ctx) {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY(ctx)) || '[]')); } catch { return new Set(); }
+}
+function saveCollapsed(ctx, set) {
+  try { localStorage.setItem(COLLAPSE_KEY(ctx), JSON.stringify([...set])); } catch { /* egal */ }
+}
+
+/** Gruppen als einklappbare Abschnitte, darüber «Alle einklappen / aufklappen» */
+function docTable(gs, ctx) {
+  const collapsed = loadCollapsed(ctx);
+  const toggleAll = h('button', { type: 'button', class: 'btn small ghost' });
+  const updateToggle = () => {
+    const allClosed = gs.every((g) => collapsed.has(g.kind));
+    toggleAll.textContent = allClosed ? 'Alle aufklappen' : 'Alle einklappen';
+  };
+  const sections = gs.map((g) => {
+    const warn = g.docs.some((d) => validity(d).level);
+    const det = h('details', { class: 'doc-group', open: !collapsed.has(g.kind), ontoggle: () => {
+      if (det.open) collapsed.delete(g.kind); else collapsed.add(g.kind);
+      saveCollapsed(ctx, collapsed);
+      updateToggle();
+    } },
+      h('summary', null,
+        h('span', { 'aria-hidden': 'true' }, g.icon), ` ${g.plural} `, h('span', { class: 'muted' }, `(${g.docs.length})`),
+        warn ? h('span', { class: 'doc-valid warn', title: 'Gültigkeit prüfen' }, ' ⚠') : null),
+      h('div', { class: 'doc-table' }, g.docs.map((d, i) => docRow(d, i === 0 || g.docs[i - 1].person !== d.person)))
+    );
+    det.dataset.kind = g.kind;
+    return det;
+  });
+  toggleAll.onclick = () => {
+    const close = !gs.every((g) => collapsed.has(g.kind));
+    for (const det of sections) det.open = !close; // löst ontoggle aus und speichert
+    for (const g of gs) close ? collapsed.add(g.kind) : collapsed.delete(g.kind);
+    saveCollapsed(ctx, collapsed);
+    updateToggle();
+  };
+  updateToggle();
+  return h('div', { class: 'doc-groups' }, gs.length > 1 ? h('div', { class: 'doc-tools' }, toggleAll) : null, ...sections);
 }
 
 function docRow(d, showPerson) {
@@ -109,7 +145,7 @@ export function docsCompact() {
   const diving = t && (t.items || []).some((it) => /tauch|div(e|ing)|brevet/i.test(`${it.title} ${it.catId} ${(S.categories || []).find((c) => c.id === it.catId)?.name || ''}`) || /tauch|div/i.test(t.name));
   const kinds = ['pass', 'id', 'visum', 'krankenkasse', 'versicherung', 'notfall', ...(diving ? ['brevet', 'tauchen'] : [])];
   const gs = groups(kinds);
-  return gs.length ? docTable(gs) : h('p', { class: 'muted' }, 'Keine Reisedokumente für unterwegs.');
+  return gs.length ? docTable(gs, 'heute') : h('p', { class: 'muted' }, 'Keine Reisedokumente für unterwegs.');
 }
 
 export function renderDokumente() {
@@ -123,7 +159,7 @@ export function renderDokumente() {
     ),
     h('p', { class: 'muted small' }, 'Gelten für alle Reisen. Reisli warnt, wenn etwas vor oder kurz nach der gewählten Reise abläuft. Zeile antippen zum Bearbeiten.'),
     problems.length ? h('p', { class: 'warn' }, `⚠ ${problems.length} Dokument${problems.length === 1 ? '' : 'e'} prüfen`) : null,
-    gs.length ? docTable(gs) : h('p', { class: 'muted' }, 'Noch keine Dokumente erfasst.')
+    gs.length ? docTable(gs, 'tab') : h('p', { class: 'muted' }, 'Noch keine Dokumente erfasst.')
   ));
   view.append(offlineCard());
   return view;

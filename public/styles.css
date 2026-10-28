@@ -721,7 +721,15 @@ a.contact { color: var(--accent); }
 
 /* Reisedokumente: gruppiert nach Kategorie, kompakt */
 .doc-groups { display: flex; flex-direction: column; gap: 1rem; margin-top: .6rem; }
-.doc-group h3 { margin: 0 0 .3rem; font-size: .95rem; }
+.doc-tools { display: flex; justify-content: flex-end; margin-bottom: -.6rem; }
+.doc-group > summary {
+  list-style: none; cursor: pointer; font-weight: 700; font-size: .95rem; padding: .35rem 0; display: flex; align-items: center; gap: .3rem;
+  user-select: none;
+}
+.doc-group > summary::-webkit-details-marker { display: none; }
+.doc-group > summary::before { content: '▸'; color: var(--ink-3); width: 1rem; transition: transform .15s; }
+.doc-group[open] > summary::before { transform: rotate(90deg); }
+.doc-group > summary:hover { color: var(--accent); }
 .doc-table { display: flex; flex-direction: column; }
 .doc-line {
   display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) 11rem 9rem 7.6rem; align-items: center; gap: .2rem .8rem;
