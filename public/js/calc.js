@@ -675,6 +675,15 @@ export function paymentsCsv(settings, trips, { methodId } = {}) {
     if (!isDate(p.date)) { undated.push({ trip: t, item: it, payment: p }); continue; }
     rows.push({ t, it, p, chf });
   }
+  // Bargeldbezüge belasten die Karte bzw. das Konto – als eigene Zeile «Bargeldbezug»
+  for (const t of trips) for (const c of t.cash || []) {
+    if (c.kind !== 'bezug' || !(c.chf > 0)) continue;
+    if (methodId !== undefined && (c.methodId || '') !== methodId) continue;
+    const p = { date: c.date, amount: c.amount, currency: c.currency, chf: c.chf, methodId: c.methodId, note: c.note };
+    const it = { title: `Bargeldbezug ${c.currency} ${fmt0(c.amount)}`, catId: '' };
+    if (!isDate(c.date)) continue;
+    rows.push({ t, it, p, chf: c.chf });
+  }
   rows.sort((a, b) => a.p.date.localeCompare(b.p.date) || a.it.title.localeCompare(b.it.title));
   const head = ['Datum', 'Buchungstext', 'Betrag CHF', 'Bezahlmethode', 'Reise', 'Posten', 'Kategorie', 'Originalbetrag', 'Währung', 'Notiz'];
   const lines = rows.map(({ t, it, p, chf }) => [
@@ -704,4 +713,48 @@ export function tripCsv(settings, trip) {
     rows.push([it.date, it.endDate || '', it.time || '', it.title, it.detail || '', cat(it.catId), placeFor(trip, it, it.date), num(it.plan?.amount), it.plan?.currency || 'CHF', num(c.planCHF), num(c.paidCHF), num(c.open), num(c.totalCHF), c.label, methods, it.dueDate || '', it.note || '', it.link || '']);
   }
   return '﻿' + rows.map((r) => r.map(q).join(';')).join('\r\n');
+}
+
+// ---------- Bargeld-Kasse ----------
+
+/** Zählt eine Bezahlmethode als Bargeld? Ausdrücklich gesetzt, sonst nach Name («Bar», «Bargeld», «Cash») */
+export const isCashMethod = (m) => !!m && (typeof m.cash === 'boolean' ? m.cash : /^(bar|cash)/i.test(m.name || ''));
+
+/**
+ * Portemonnaie pro Währung: Bezüge/Anfangsbestand minus bar bezahlte Ausgaben (Zahlungen mit Bargeld-Methode)
+ * minus Rücktausch, plus Korrekturen aus dem Kassensturz.
+ * Nur Währungen mit mindestens einem Kassen-Eintrag erscheinen.
+ * Liefert [{currency, inflow, inflowChf, spent, out, adjust, balance, rate (CHF pro Einheit inkl. Gebühren | null),
+ *           entries, payments:[{date, title, amount}]}]
+ */
+export function cashWallet(settings, trip) {
+  const cashIds = new Set((settings.methods || []).filter(isCashMethod).map((m) => m.id));
+  const pots = new Map();
+  const pot = (cur) => {
+    if (!pots.has(cur)) pots.set(cur, { currency: cur, inflow: 0, inflowChf: 0, inflowWithChf: 0, spent: 0, out: 0, adjust: 0, entries: [], payments: [] });
+    return pots.get(cur);
+  };
+  for (const c of trip.cash || []) {
+    const p = pot(c.currency);
+    p.entries.push(c);
+    if (c.kind === 'bezug' || c.kind === 'start') {
+      p.inflow += n(c.amount);
+      if (Number.isFinite(c.chf) && c.chf > 0) { p.inflowChf += c.chf; p.inflowWithChf += n(c.amount); }
+    } else if (c.kind === 'zurueck') p.out += n(c.amount);
+    else if (c.kind === 'korrektur') p.adjust += n(c.amount);
+  }
+  for (const it of trip.items || []) for (const pay of it.payments || []) {
+    if (!cashIds.has(pay.methodId) || !pots.has(pay.currency)) continue;
+    const p = pots.get(pay.currency);
+    p.spent += n(pay.amount);
+    p.payments.push({ date: pay.date, title: it.title, amount: n(pay.amount), itemId: it.id });
+  }
+  return [...pots.values()].map((p) => ({
+    ...p,
+    inflow: round2(p.inflow), spent: round2(p.spent), out: round2(p.out), adjust: round2(p.adjust),
+    balance: round2(p.inflow - p.spent - p.out + p.adjust),
+    rate: p.inflowWithChf > 0 ? p.inflowChf / p.inflowWithChf : null,
+    entries: p.entries.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+    payments: p.payments.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+  })).sort((a, b) => (a.currency === trip.currency ? -1 : b.currency === trip.currency ? 1 : a.currency.localeCompare(b.currency)));
 }

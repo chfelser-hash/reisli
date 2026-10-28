@@ -1,6 +1,7 @@
 // Ansicht «Offen»: Zahlungskalender (was ist wann fällig), Bargeld vor Ort, To-dos
 import { h, toast, modal } from '../ui.js';
 import { state, api, trip, settings, saveItem, render, methodName, personName } from '../app.js';
+import { walletCard } from './kasse.js';
 import { dueList, cashPlan, todoList, openBreakdown, paymentsCsv, fmt, fmt0, fmtCur, fmtDate, fmtDay, todayStr, toCHF, MONTHS, paymentCHF, daysBetween } from '../calc.js';
 import { editItem, quickPay, catDot } from './item.js';
 import { renderPlan } from './plan.js';
@@ -213,9 +214,9 @@ function cash(t) {
       today > t.start && today <= t.end ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: fromToday, onchange: (e) => { fromToday = e.target.checked; render(); } }), 'nur ab heute') : null
     )
   );
-  if (!groups.length) return [opts, h('section', { class: 'card' }, h('p', { class: 'empty' }, 'Nichts mehr vor Ort zu bezahlen.'))];
+  if (!groups.length) return [walletCard(t), opts, h('section', { class: 'card' }, h('p', { class: 'empty' }, 'Nichts mehr vor Ort zu bezahlen.'))];
   const range = (p) => `${fmtDay(p.from)}${p.to !== p.from ? ' – ' + fmtDay(p.to) : ''}`;
-  return [opts, ...groups.map((g) => {
+  return [walletCard(t), opts, ...groups.map((g) => {
     const foreign = g.currency !== 'CHF';
     // Betrag in Reisewährung, darunter klein der CHF-Wert
     const amt = (v, chf, approx = false) => h('span', { class: 'two' },

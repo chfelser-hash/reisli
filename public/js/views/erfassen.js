@@ -1,8 +1,9 @@
 // Ansicht «Erfassen»: Unterwegs-Modus – Ausgaben in Sekunden erfassen (Betrag in Lokalwährung, Kategorie, fertig)
 import { h, chips, toast } from '../ui.js';
 import { state, trip, settings, saveItem, deleteItem, render, tripCurrencies, hasRate, personName, methodName } from '../app.js';
-import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, fmtDay, dayNumber, tripSummary, isStay, stayFor, dayCurrency } from '../calc.js';
+import { evalExpr, itemCalc, fmt, fmt0, fmtCur, toCHF, round2, todayStr, fmtDay, dayNumber, tripSummary, isStay, stayFor, dayCurrency, isCashMethod } from '../calc.js';
 import { ensureRate } from './shared.js';
+import { walletFor, fmtRate } from './kasse.js';
 import { editItem, catDot } from './item.js';
 import { renderPlan } from './plan.js';
 import { timeline } from './timeline.js';
@@ -57,7 +58,7 @@ export function renderErfassen() {
   };
   const others = [...new Set([...tripCurrencies(), ...(state.data.knownCurrencies || [])])].filter((c) => !quick.includes(c)).sort();
   const curChips = h('div', { class: 'row gap wrap cur-pick' },
-    chips(quick.map((c) => ({ value: c, label: c })), draft.cur, (v) => { draft.cur = v; remember('cur.' + t.id, v); updatePreview(); }, 'small'),
+    chips(quick.map((c) => ({ value: c, label: c })), draft.cur, (v) => { draft.cur = v; remember('cur.' + t.id, v); updatePreview(); updateCashHint(); }, 'small'),
     others.length ? h('select', { class: 'cur-more', 'aria-label': 'Andere Währung', onchange: (e) => pickCur(e.target.value) },
       h('option', { value: '' }, 'Andere …'), others.map((c) => h('option', { value: c }, c))) : null
   );
@@ -79,13 +80,27 @@ export function renderErfassen() {
     } }, f.title)))
   ) : null;
 
+  // Bar bezahlt: zeigen, wie viel noch im Portemonnaie ist
+  const cashHint = h('p', { class: 'muted small cash-hint' });
+  const cashRate = (cur) => {
+    const m = S.methods.find((x) => x.id === draft.methodId);
+    return isCashMethod(m) ? walletFor(t, cur)?.rate || null : null;
+  };
+  const updateCashHint = () => {
+    const m = S.methods.find((x) => x.id === draft.methodId);
+    const w = isCashMethod(m) ? walletFor(t, draft.cur) : null;
+    cashHint.hidden = !w;
+    if (w) cashHint.textContent = `Im Portemonnaie: ${fmtCur(w.balance, w.currency)}${w.rate ? ` · gerechnet zum Bezugskurs ${fmtRate(w.currency, w.rate)}` : ''}`;
+  };
   const paidBox = h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: draft.paid, onchange: (e) => { draft.paid = e.target.checked; methodWrap.hidden = !draft.paid; } }), 'schon bezahlt');
   const methodWrap = h('div', { class: 'field', hidden: !draft.paid },
     h('span', { class: 'label' }, 'Bezahlt mit'),
-    chips([{ value: '', label: '—' }, ...S.methods.map((m) => ({ value: m.id, label: m.name }))], draft.methodId, (v) => { draft.methodId = v; remember('method', v); }, 'small'),
+    chips([{ value: '', label: '—' }, ...S.methods.map((m) => ({ value: m.id, label: m.name }))], draft.methodId, (v) => { draft.methodId = v; remember('method', v); updateCashHint(); }, 'small'),
+    cashHint,
     parts.length ? h('span', { class: 'label' }, 'Bezahlt von') : null,
     parts.length ? chips(parts.map((p) => ({ value: p.id, label: p.name })), draft.paidBy, (v) => (draft.paidBy = v), 'small') : null
   );
+  updateCashHint();
   const forWhom = parts.length ? h('div', { class: 'field' },
     h('span', { class: 'label' }, 'Für'),
     h('div', { class: 'chips' }, parts.map((p) => h('label', { class: 'check chip-check' },
@@ -109,7 +124,8 @@ export function renderErfassen() {
       const item = {
         date: draft.date, title: title.value.trim() || catName, catId: draft.catId, detail: '', place: '', time: '',
         plan: { amount: v, currency: cur }, payWhere: 'vorort', reserved: false,
-        payments: draft.paid ? [{ date: draft.date, amount: v, currency: cur, chf: hasRate(cur) ? round2(toCHF(S, v, cur)) : null, methodId: draft.methodId, paidBy: parts.length ? draft.paidBy : '', note: '' }] : [],
+        // Bar bezahlt und Bargeld dieser Währung bezogen: zum effektiven Kurs inkl. Gebühren rechnen
+        payments: draft.paid ? [{ date: draft.date, amount: v, currency: cur, chf: cashRate(cur) ? round2(v * cashRate(cur)) : hasRate(cur) ? round2(toCHF(S, v, cur)) : null, methodId: draft.methodId, paidBy: parts.length ? draft.paidBy : '', note: '' }] : [],
         split: parts.length && draft.members.length && draft.members.length < parts.length ? { mode: 'equal', members: draft.members, values: {} } : null,
         todos: [], files: [], link: '', note: '',
       };

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  evalExpr, itemCalc, tripSummary, allowanceMap, dueList, cashPlan, byMethod, shares, settlement,
+  cashWallet, isCashMethod, evalExpr, itemCalc, tripSummary, allowanceMap, dueList, cashPlan, byMethod, shares, settlement,
   minimizeTransfers, copyTrip, tripDates, nights, placeFor, tripCsv, addDays, todoList,
 } from '../public/js/calc.js';
 
@@ -281,4 +281,25 @@ test('CSV für Kässeli: Datum, Buchungstext, Betrag; ohne Datum separat', async
   assert.equal(all.count, 2);
   assert.equal(all.undated.length, 1);
   assert.equal(paymentsCsv(settings, [t], { methodId: 'kk' }).count, 1);
+});
+
+test('Bargeld-Kasse: Bezüge minus bar bezahlte Ausgaben, effektiver Kurs, Korrektur', () => {
+  const settings = { methods: [{ id: 'bar', name: 'Bar' }, { id: 'kk', name: 'Kreditkarte' }], rates: { THB: { rate: 0.025 } } };
+  const trip = {
+    currency: 'THB',
+    cash: [
+      { id: 'a', kind: 'bezug', date: '2027-02-01', amount: 10000, currency: 'THB', chf: 262 },
+      { id: 'b', kind: 'korrektur', date: '2027-02-03', amount: -200, currency: 'THB' },
+    ],
+    items: [
+      { title: 'Essen', plan: { amount: 800, currency: 'THB' }, payments: [{ amount: 800, currency: 'THB', methodId: 'bar', date: '2027-02-01' }] },
+      { title: 'Hotel', plan: { amount: 5000, currency: 'THB' }, payments: [{ amount: 5000, currency: 'THB', methodId: 'kk', date: '2027-02-01' }] },
+      { title: 'Taxi CHF', plan: { amount: 50, currency: 'CHF' }, payments: [{ amount: 50, currency: 'CHF', methodId: 'bar' }] },
+    ],
+  };
+  const w = cashWallet(settings, trip);
+  assert.equal(w.length, 1); // CHF hat keinen Kassen-Eintrag → kein Portemonnaie
+  assert.equal(w[0].balance, 10000 - 800 - 200);
+  assert.ok(Math.abs(w[0].rate - 0.0262) < 1e-9);
+  assert.ok(isCashMethod({ name: 'Bargeld' }) && !isCashMethod({ name: 'Bargeld', cash: false }) && isCashMethod({ name: 'Portemonnaie', cash: true }));
 });

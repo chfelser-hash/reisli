@@ -115,6 +115,25 @@ export function cleanRepayment(r) {
   return { id: id(r.id), date: optDate(r.date), from: str(r.from, 40), to: str(r.to, 40), amount, methodId: str(r.methodId, 40), note: str(r.note, 200) };
 }
 
+/** Bargeld-Kasse: Bezug am Bancomat, Anfangsbestand, Rücktausch, Korrektur (Kassensturz) */
+export const CASH_KINDS = ['bezug', 'start', 'zurueck', 'korrektur'];
+export function cleanCash(c) {
+  const kind = CASH_KINDS.includes(c.kind) ? c.kind : 'bezug';
+  const amount = num(c.amount);
+  if (kind === 'korrektur' ? !amount : !(amount > 0)) throw httpError(400, 'Betrag ungültig');
+  const chf = Number(c.chf);
+  return {
+    id: id(c.id),
+    date: optDate(c.date),
+    kind,
+    amount,
+    currency: cur(c.currency),
+    chf: Number.isFinite(chf) && chf >= 0 && kind !== 'korrektur' ? Math.round(chf * 100) / 100 : null,
+    methodId: str(c.methodId, 40),
+    note: str(c.note, 200),
+  };
+}
+
 export function cleanDay(input) {
   return {
     title: str(input.title, 200),
@@ -137,13 +156,18 @@ export function cleanTrip(input, user) {
   for (const r of Array.isArray(input.repayments) ? input.repayments.slice(0, 500) : []) {
     try { repayments.push(cleanRepayment(r)); } catch { /* ungültige überspringen */ }
   }
-  return migrateTrip({ id: id(input.id), ...meta, days, items, repayments, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
+  const cash = [];
+  for (const c of Array.isArray(input.cash) ? input.cash.slice(0, 1000) : []) {
+    try { cash.push(cleanCash(c)); } catch { /* ungültige überspringen */ }
+  }
+  return migrateTrip({ id: id(input.id), ...meta, days, items, repayments, cash, createdAt: input.createdAt || new Date().toISOString(), source: str(input.source, 60) });
 }
 
 export function cleanSettings(b, current) {
   const out = { ...current };
   if (Array.isArray(b.methods)) {
-    out.methods = b.methods.slice(0, 50).map((m) => ({ id: id(m.id), name: str(m.name, 60).trim() })).filter((m) => m.name);
+    // cash: Bargeld (zählt für die Bargeld-Kasse); fehlt das Feld, gilt «Bar…»/«Cash» als Bargeld
+    out.methods = b.methods.slice(0, 50).map((m) => ({ id: id(m.id), name: str(m.name, 60).trim(), ...(typeof m.cash === 'boolean' ? { cash: m.cash } : {}) })).filter((m) => m.name);
   }
   if (Array.isArray(b.categories)) {
     out.categories = b.categories.slice(0, 40).map((c) => ({ id: id(c.id), name: str(c.name, 60).trim(), color: color(c.color) })).filter((c) => c.name);

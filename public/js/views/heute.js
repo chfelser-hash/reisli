@@ -8,6 +8,7 @@ import {
   placeFor, stayFor, dayCurrency, allowanceMap, tripSummary, cashPlan, rateOf, fromCHF,
 } from '../calc.js';
 import { editItem, catDot } from './item.js';
+import { walletCard } from './kasse.js';
 import { documentFiles, docsCompact, cacheFiles, countCached, cachedText } from './dokumente.js';
 
 
@@ -82,7 +83,7 @@ export function renderHeute() {
     ));
   }
 
-  view.append(budgetCard(S, t, date, today), ...receiptsCard(t), offlineCard());
+  view.append(budgetCard(S, t, date, today), walletCard(t), ...receiptsCard(t), offlineCard());
   return view;
 }
 

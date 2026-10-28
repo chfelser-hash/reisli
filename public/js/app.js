@@ -10,6 +10,7 @@ import { renderReise } from './views/reise.js';
 import { newTripDialog } from './views/newtrip.js';
 import { renderHeute, syncDialog, tripRunning } from './views/heute.js';
 import { renderDokumente } from './views/dokumente.js';
+import { openCalculator } from './views/rechner.js';
 import { kvGet, kvSet, kvDel } from './idb.js';
 
 export const state = {
@@ -92,6 +93,10 @@ function offlineOp(method, url) {
   if (m && method === 'DELETE') return { kind: 'item-del', tripId: m[1], itemId: m[2] };
   m = url.match(/^\/api\/trips\/([\w-]+)\/repayments$/);
   if (m && method === 'POST') return { kind: 'rep-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/cash$/);
+  if (m && method === 'POST') return { kind: 'cash-new', tripId: m[1] };
+  m = url.match(/^\/api\/trips\/([\w-]+)\/cash\/([\w-]+)$/);
+  if (m && method === 'DELETE') return { kind: 'cash-del', tripId: m[1], cashId: m[2] };
   m = url.match(/^\/api\/trips\/([\w-]+)\/repayments\/([\w-]+)$/);
   if (m && method === 'DELETE') return { kind: 'rep-del', tripId: m[1], repId: m[2] };
   return null;
@@ -100,7 +105,7 @@ function offlineOp(method, url) {
 export async function api(method, url, body, opts = {}) {
   const op = method === 'GET' ? null : offlineOp(method, url);
   if (op?.kind === 'item-new') body = Array.isArray(body) ? body.map((x) => ({ ...x, id: x.id || newId() })) : { ...body, id: body.id || newId() };
-  if (op?.kind === 'rep-new') body = { ...body, id: body.id || newId() };
+  if (op?.kind === 'rep-new' || op?.kind === 'cash-new') body = { ...body, id: body.id || newId() };
   // Liegt noch etwas in der Warteschlange, hinten anstellen – sonst stimmt die Reihenfolge nicht mehr
   if (op && (state.offline || state.outbox.length)) return enqueue(method, url, body, op);
   let res;
@@ -161,6 +166,13 @@ function enqueue(method, url, body, op) {
   } else if (op.kind === 'rep-new') {
     ob.push(entry);
     res = { repayment: { ...body, by, createdAt: now } };
+  } else if (op.kind === 'cash-new') {
+    ob.push(entry);
+    res = { entry: { ...body, by, createdAt: now } };
+  } else if (op.kind === 'cash-del') {
+    const pendingNew = ob.find((o) => o.kind === 'cash-new' && o.body.id === op.cashId);
+    if (pendingNew) state.outbox = ob.filter((o) => o !== pendingNew);
+    else ob.push(entry);
   } else if (op.kind === 'rep-del') {
     const pendingNew = ob.find((o) => o.kind === 'rep-new' && o.body.id === op.repId);
     if (pendingNew) state.outbox = ob.filter((o) => o !== pendingNew);
@@ -414,6 +426,7 @@ function renderChrome(activeTab) {
       VIEWS.filter((v) => !v.hidden && (!v.when || v.when() || activeTab === v.id)).map((v) => h('a', { href: '#' + v.id, class: 'tab' + (activeTab === v.id ? ' on' : '') }, h('span', { class: 'ti' }, icon(v.id)), h('span', { class: 'tl' }, v.label), h('span', { class: 'tl-short' }, v.short || v.label)))
     ),
     netBadge(),
+    h('button', { type: 'button', class: 'icon-btn calc-btn', title: 'Umrechnen', 'aria-label': 'Umrechnen', onclick: () => openCalculator() }, '⇄'),
     tripPicker()
   );
 }

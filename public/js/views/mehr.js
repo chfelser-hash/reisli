@@ -2,7 +2,7 @@
 // Alles, was nur eine Reise betrifft, liegt unter «Reise bearbeiten» (✎ im Plan).
 import { h, toast, confirmDialog } from '../ui.js';
 import { state, api, reload, render, settings, selectTrip, download, refreshRates, replaceMethodDialog, clearLocal } from '../app.js';
-import { fmt0, fmtCur, fmtDate, methodUsage } from '../calc.js';
+import { fmt0, fmtCur, fmtDate, methodUsage, isCashMethod } from '../calc.js';
 import { card, uid, saveSettings } from './shared.js';
 
 export function renderMehr() {
@@ -52,9 +52,12 @@ function listEditor(id, title, hint, items, fields, onSave, newItem) {
 }
 
 function methodsCard() {
-  return listEditor('methods', 'Bezahlmethoden', 'Frei definierbar, z.B. Kreditkarten und Konten. Umbenennen ändert alle Einträge mit. Beim Löschen einer verwendeten Methode fragt Reisli, wodurch sie ersetzt werden soll.',
+  return listEditor('methods', 'Bezahlmethoden', 'Frei definierbar, z.B. Kreditkarten und Konten. «Bargeld» ankreuzen bei Bar-Zahlungen – die ziehen sich in der Bargeld-Kasse vom Portemonnaie ab. Umbenennen ändert alle Einträge mit. Beim Löschen einer verwendeten Methode fragt Reisli, wodurch sie ersetzt werden soll.',
     settings().methods,
-    [(m) => h('input', { value: m.name, 'aria-label': 'Name', oninput: (e) => (m.name = e.target.value) })],
+    [
+      (m) => h('input', { value: m.name, 'aria-label': 'Name', oninput: (e) => (m.name = e.target.value) }),
+      (m) => h('label', { class: 'check small', title: 'Zählt für die Bargeld-Kasse' }, h('input', { type: 'checkbox', checked: isCashMethod(m), onchange: (e) => (m.cash = e.target.checked) }), 'Bargeld'),
+    ],
     async (list) => {
       const keep = list.filter((m) => m.name.trim());
       // Gelöschte, aber noch verwendete Methoden zuerst umhängen

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, newId, migrateTrip } from './store.js';
 import { Auth, httpError } from './auth.js';
-import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, cleanDocument, isDate, str } from './clean.js';
+import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepayment, cleanDocument, cleanCash, isDate, str } from './clean.js';
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
@@ -319,6 +319,29 @@ async function api(req, res, url) {
   }
 
   // ----- Rückzahlungen (Kostenaufteilung) -----
+  // ----- Bargeld-Kasse -----
+  m = p.match(/^\/api\/trips\/([\w-]+)\/cash$/);
+  if (m && method === 'POST') {
+    const b = await readBody(req);
+    const entry = store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      const c = { ...cleanCash(b), by: user.name, createdAt: new Date().toISOString() };
+      const dup = t.cash.find((x) => x.id === c.id); // offline doppelt gesendet
+      if (dup) return dup;
+      t.cash.push(c);
+      return c;
+    });
+    return send(res, 200, { rev: store.rev, entry });
+  }
+  m = p.match(/^\/api\/trips\/([\w-]+)\/cash\/([\w-]+)$/);
+  if (m && method === 'DELETE') {
+    store.mutate((d) => {
+      const t = findTrip(d, m[1]);
+      t.cash = t.cash.filter((x) => x.id !== m[2]);
+    });
+    return send(res, 200, { rev: store.rev });
+  }
+
   m = p.match(/^\/api\/trips\/([\w-]+)\/repayments$/);
   if (m && method === 'POST') {
     const b = await readBody(req);
