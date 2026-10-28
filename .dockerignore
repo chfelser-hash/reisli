@@ -1,0 +1,10 @@
+data
+node_modules
+.git
+test
+*.xlsx
+*.xlsm
+*.csv
+reisli-import*.json
+reisli-backup*.json
+reisli-reise*.json

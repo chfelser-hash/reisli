@@ -1,0 +1,17 @@
+# Persönliche Daten – niemals ins Repo!
+data/*
+!data/.gitkeep
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+reisli-import*.json
+reisli-backup*.json
+reisli-reise*.json
+
+# Allgemein
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.env

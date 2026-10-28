@@ -1,0 +1,18 @@
+services:
+  reisli:
+    build: .
+    image: reisli:latest
+    container_name: reisli
+    restart: unless-stopped
+    ports:
+      # 8081, damit Reisli neben Kässeli (8080) auf derselben NAS laufen kann
+      - "8081:8081"
+    volumes:
+      # Daten bleiben ausserhalb des Containers (auf der Synology z.B. /volume1/docker/reisli/data)
+      - ./data:/data
+    environment:
+      - TZ=Europe/Zurich
+      # Auf "true" setzen, wenn die App nur über HTTPS (Reverse Proxy) erreichbar ist
+      - COOKIE_SECURE=false
+      # Wechselkurse täglich automatisch holen (EZB-Kurse via frankfurter.app). "false" = nur manuell
+      - AUTO_RATES=true
