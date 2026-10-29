@@ -9,13 +9,65 @@
   "background_color": "#f5f3ee",
   "theme_color": "#0e6b6e",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
   ],
   "shortcuts": [
-    { "name": "Ausgabe erfassen", "url": "/#erfassen" },
-    { "name": "Reiseplan", "url": "/#plan" }
-  ]
+    {
+      "name": "Ausgabe erfassen",
+      "url": "/#erfassen"
+    },
+    {
+      "name": "Reiseplan",
+      "url": "/#plan"
+    },
+    {
+      "name": "Buchung importieren",
+      "url": "/#import"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": [
+            "application/pdf",
+            ".pdf",
+            "message/rfc822",
+            ".eml",
+            "text/plain",
+            ".txt",
+            "text/html",
+            ".html"
+          ]
+        }
+      ]
+    }
+  }
 }

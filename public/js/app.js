@@ -11,6 +11,7 @@ import { newTripDialog } from './views/newtrip.js';
 import { renderHeute, syncDialog, tripRunning } from './views/heute.js';
 import { renderDokumente } from './views/dokumente.js';
 import { openCalculator } from './views/rechner.js';
+import { importDialog, takeShared } from './views/importbuchung.js';
 import { kvGet, kvSet, kvDel } from './idb.js';
 
 export const state = {
@@ -624,16 +625,27 @@ async function start() {
   await reload();
   state.loadedVersion = state.data.version;
   state.view = location.hash.slice(1) || defaultView();
-  render();
+  if (state.view === 'import') openImport();
+  else render();
   startPolling();
   if (!state.offline) autoRefreshRates();
 }
 
 window.addEventListener('hashchange', () => {
   state.view = location.hash.slice(1) || 'plan';
+  if (state.view === 'import') return openImport();
   render();
   window.scrollTo(0, 0);
 });
+
+/** #import (Verknüpfung oder «Teilen → Reisli»): Plan zeigen und den Import-Dialog öffnen */
+async function openImport() {
+  state.view = 'plan';
+  history.replaceState(null, '', '#plan');
+  render();
+  const shared = await takeShared();
+  importDialog(shared && (shared.text || shared.files.length) ? shared : null);
+}
 
 window.addEventListener('beforeunload', (e) => {
   if (state.busy) e.preventDefault();

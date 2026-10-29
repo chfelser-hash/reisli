@@ -1,0 +1,27 @@
+From: Hotels.com <confirmation@hotels.com>
+To: anna@example.org
+Subject: =?utf-8?q?Buchungsbest=C3=A4tigung=3A_H=C3=B4tel_du_Lac_Gen=C3=A8ve?=
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============4917874934528437432=="
+
+--===============4917874934528437432==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: base64
+
+VmllbGVuIERhbmsgZsO8ciBJaHJlIEJ1Y2h1bmchDQpIw7R0ZWwgZHUgTGFjIEdlbsOodmUNCkJl
+c3TDpHRpZ3VuZ3NudW1tZXI6IDcyMTIzNDU2Nzg5MDENCkFucmVpc2U6IERvLiwgMS4gQXByLiAy
+MDI3DQpBYnJlaXNlOiBTby4sIDQuIEFwci4gMjAyNw0KQWRyZXNzZTogUXVhaSBkdSBNb250LUJs
+YW5jIDEsIDEyMDEgR2Vuw6h2ZSwgU2Nod2Vpeg0KVGVsZWZvbjogKzQxIDIyIDEyMyA0NSA2Nw0K
+R2VzYW10OiBDSEYgMScyMzAuMDANCkJlemFobHQgYW0gMjAuMDEuMjAyNyDigJMgdm9sbHN0w6Ru
+ZGlnIGJlemFobHQuDQo=
+
+--===============4917874934528437432==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: base64
+MIME-Version: 1.0
+
+PHA+VmllbGVuIERhbmsgZsO8ciBJaHJlIEJ1Y2h1bmchPC9wPjxwPkjDtHRlbCBkdSBMYWMgR2Vu
+w6h2ZTwvcD4NCg==
+
+--===============4917874934528437432==--

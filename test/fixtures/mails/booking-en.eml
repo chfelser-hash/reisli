@@ -1,0 +1,23 @@
+From: Booking.com <noreply@booking.com>
+To: anna@example.org
+Subject: Your booking is confirmed at Riverside Boutique Hotel
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><table>
+<tr><td><h1>Thanks, Anna! Your booking in Bangkok is confirmed.</h1></td></tr>
+<tr><td><b>Riverside Boutique Hotel</b></td></tr>
+<tr><td>Address:</td><td>123 Charoen Krung Road, Bang Rak, 10500 Bangkok, Tha=
+iland</td></tr>
+<tr><td>Phone:</td><td>+66 2 123 4567</td></tr>
+<tr><td>Booking number:</td><td>4711.123.456</td></tr>
+<tr><td>PIN code:</td><td>8642</td></tr>
+<tr><td>Check-in</td><td>Friday, February 12, 2027 (from 2:00 PM)</td></tr>
+<tr><td>Check-out</td><td>Monday, February 15, 2027 (until 12:00 PM)</td></tr>
+<tr><td>Total price</td><td>THB&nbsp;9,450</td></tr>
+<tr><td>You&#8217;ll pay when you stay at Riverside Boutique Hotel</td></tr>
+<tr><td>Free cancellation until February 10, 2027 11:59 PM</td></tr>
+<tr><td><a href=3D"https://secure.booking.com/myreservations.html?bn=3D471112=
+3456">Manage booking</a></td></tr>
+</table></body></html>

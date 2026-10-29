@@ -1,6 +1,6 @@
 {
   "name": "reisli",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Reisli – Ferienbudget als Web-App (PWA) – lokal oder auf einer Synology NAS betreibbar",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "import-excel": "node scripts/import-excel.js",
     "test": "node --test test/*.test.js",
     "test:e2e": "node --test --test-concurrency=1 test/e2e/*.test.js",
-    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include=server/** --test-coverage-include=public/js/calc.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=85 test/*.test.js test/e2e/*.test.js"
+    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include=server/** --test-coverage-include=public/js/calc.js --test-coverage-include=public/js/booking-parse.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=85 test/*.test.js test/e2e/*.test.js"
   },
   "license": "MIT"
 }

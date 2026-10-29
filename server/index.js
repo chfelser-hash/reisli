@@ -750,6 +750,8 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) await api(req, res, url);
+    // «Teilen → Reisli» ohne aktiven Service Worker (z.B. über http): Inhalt verwerfen, Import-Dialog öffnen
+    else if (url.pathname === '/share' && req.method === 'POST') { req.resume(); res.writeHead(303, { Location: '/#import' }); res.end(); }
     else serveStatic(req, res, url);
   } catch (e) {
     const status = e.status || 500;

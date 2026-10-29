@@ -1,0 +1,9 @@
+Thai Airways - E-Ticket Itinerary Receipt
+Booking reference: 7HRT4D
+
+Flight     Date        From            To              Departure  Arrival
+TG 225     16FEB27     Bangkok (BKK)   Phuket (HKT)    08:05      09:25
+TG 226     22FEB27     Phuket (HKT)    Bangkok (BKK)   18:40      20:05
+
+Passenger: MR ANNA MUSTER
+Total fare: THB 6,980.00

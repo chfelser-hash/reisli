@@ -1,0 +1,19 @@
+Agoda Booking Confirmation – Booking ID 987654321
+
+Dear Anna,
+Your booking is confirmed.
+
+Booking ID: 987654321
+Property: Lagoon Dive Resort
+Address: 45/2 Moo 3, Koh Tao, Surat Thani 84360, Thailand
+Phone: +66 77 456 789
+
+Check-in: February 15, 2027 (from 14:00)
+Check-out: February 20, 2027 (until 11:00)
+Room: Deluxe Bungalow, 2 adults
+
+Total charged: THB 12,500.00
+Payment: Paid in full
+
+Free cancellation before February 8, 2027.
+https://www.agoda.com/account/bookings.html

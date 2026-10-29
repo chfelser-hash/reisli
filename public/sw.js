@@ -8,8 +8,8 @@ const FILES = 'reisli-files';
 const ASSETS = [
   '/', '/index.html', '/styles.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
-  '/js/app.js', '/js/calc.js', '/js/ui.js', '/js/idb.js',
-  '/js/views/auswertung.js', '/js/views/dokumente.js', '/js/views/erfassen.js', '/js/views/heute.js', '/js/views/item.js', '/js/views/kasse.js', '/js/views/mehr.js',
+  '/js/app.js', '/js/calc.js', '/js/ui.js', '/js/idb.js', '/js/booking-parse.js',
+  '/js/views/auswertung.js', '/js/views/dokumente.js', '/js/views/erfassen.js', '/js/views/heute.js', '/js/views/importbuchung.js', '/js/views/item.js', '/js/views/kasse.js', '/js/views/mehr.js',
   '/js/views/newtrip.js', '/js/views/offen.js', '/js/views/packliste.js', '/js/views/plan.js', '/js/views/rechner.js', '/js/views/reise.js', '/js/views/shared.js', '/js/views/timeline.js',
 ];
 
@@ -47,8 +47,22 @@ async function fileCacheFirst(req) {
   return res;
 }
 
+/** Android «Teilen → Reisli»: Inhalt ablegen, dann die App mit dem Import-Dialog öffnen */
+async function receiveShare(req) {
+  try {
+    const form = await req.formData();
+    const c = await caches.open('reisli-share');
+    const files = form.getAll('file').filter((f) => f && typeof f === 'object' && f.size);
+    for (const [i, f] of files.entries()) await c.put('/shared/file' + i, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }));
+    const meta = { title: form.get('title') || '', text: form.get('text') || '', url: form.get('url') || '', files: files.map((f) => ({ name: f.name, type: f.type })) };
+    await c.put('/shared/meta', new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
+  } catch { /* dann eben leer */ }
+  return Response.redirect('/#import', 303);
+}
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  if (e.request.method === 'POST' && url.origin === location.origin && url.pathname === '/share') return e.respondWith(receiveShare(e.request));
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/files/')) return e.respondWith(fileCacheFirst(e.request));
   if (url.pathname.startsWith('/api/')) return;

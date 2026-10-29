@@ -817,3 +817,29 @@ a.contact { color: var(--accent); }
 .help p { margin: .35rem 0; }
 .changelog .cl-entry { margin-top: .6rem; }
 .changelog ul { margin: .2rem 0 0; padding-left: 1.1rem; font-size: .88rem; }
+
+/* ---------- Buchung importieren ---------- */
+.import-src textarea { width: 100%; font: inherit; font-size: .88rem; }
+.drop-zone { display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 1rem; text-align: center; cursor: pointer; }
+.drop-zone.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.drop-zone .file-input { display: none; }
+.or { text-align: center; color: var(--ink-3); font-size: .85rem; }
+.import-review { display: flex; flex-direction: column; gap: .6rem; }
+.import-trip { display: flex; flex-direction: row; align-items: center; gap: .5rem; font-weight: 600; text-align: left; }
+.import-trip select { flex: 1; min-width: 0; }
+.import-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.import-table th { text-align: left; font-weight: 600; color: var(--ink-2); padding: .3rem .5rem .3rem 0; white-space: nowrap; vertical-align: top; }
+.import-table td { padding: .25rem .3rem; vertical-align: top; }
+.import-table td:first-child { width: 1.6rem; }
+.import-table input:not([type=checkbox]):not([type=radio]), .import-table select { width: 100%; min-width: 0; }
+.import-table tr.empty th { color: var(--ink-3); font-weight: 500; }
+.import-table td.cur { max-width: 10rem; overflow-wrap: anywhere; }
+.import-table td.cur.changed { color: var(--warn); }
+.import-beleg { margin-top: .3rem; }
+@media (max-width: 560px) {
+  .import-table tr { display: grid; grid-template-columns: 1.8rem 1fr; column-gap: .3rem; padding: .2rem 0; border-top: 1px solid var(--line-2); }
+  .import-table th { padding-top: .35rem; }
+  .import-table tr > td:nth-child(3), .import-table tr > td.cur { grid-column: 2; }
+  .import-table tr[data-seg] { grid-template-columns: 1.6rem 1fr 1fr; }
+  .import-table tr[data-seg] > td:nth-child(2) { grid-column: 2 / -1; }
+}

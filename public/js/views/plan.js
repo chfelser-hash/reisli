@@ -7,6 +7,7 @@ import {
 } from '../calc.js';
 import { editItem, blankItem, catDot } from './item.js';
 import { timeline } from './timeline.js';
+import { importDialog } from './importbuchung.js';
 import { newTripDialog } from './newtrip.js';
 
 let mode = (() => { try { return localStorage.getItem('reisli.planMode') || 'tage'; } catch { return 'tage'; } })();
@@ -26,6 +27,7 @@ export function renderPlan() {
     h('div', { class: 'segs' }, seg('tage', 'Tage'), seg('uebersicht', 'Übersicht')),
     mode === 'tage' ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: onlyCosts, onchange: (e) => { onlyCosts = e.target.checked; render(); } }), 'nur Posten mit Kosten') : null,
     h('span', { class: 'spacer' }),
+    h('button', { class: 'btn', title: 'Bestätigung von Booking.com, Agoda, Airline … übernehmen', onclick: () => importDialog() }, '⇣ Buchung importieren'),
     h('button', { class: 'btn primary', onclick: () => editItem(blankItem(today >= t.start && today <= t.end ? today : t.start)) }, '+ Posten')
   ));
 
