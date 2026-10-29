@@ -73,7 +73,7 @@ test('Gleiche Buchung nochmals (.eml): wird aktualisiert statt doppelt angelegt'
   await page.setInputFiles('dialog[open] input[type=file]', new URL('booking-en.eml', MAILS).pathname);
   await page.click('dialog[open] button:has-text("Erkennen")');
   await page.waitForSelector('dialog[open] .import-review');
-  assert.match(await page.textContent('dialog[open] .import-review'), /Bekannte Buchung/);
+  assert.match(await page.textContent('dialog[open] .import-review'), /gleiche Buchungsnummer/);
   // Telefon war leer → jetzt vorausgewählt; Name unverändert → nicht vorausgewählt
   assert.equal(await page.isChecked('dialog[open] input[data-key="phone"]'), true);
   assert.equal(await page.isChecked('dialog[open] input[data-key="title"]'), false);
@@ -119,6 +119,8 @@ test('SWISS: zwei Flüge, Preis und Zahlung beim ersten', T, async () => {
 
 test('Outlook-.msg: teilweise bezahlt → Zahlung über bezahlten Betrag, Rest vor Ort', T, async () => {
   const trip2 = (await api('POST', '/api/trips', { name: 'Rom', start: '2026-11-18', end: '2026-11-23', currency: 'EUR' })).data.trip.id;
+  // Wie im echten Fall: Unterkunft schon geplant (z.B. aus der Excel), aber ohne Buchungsnummer
+  const placeholder = (await api('POST', `/api/trips/${trip2}/items`, { date: '2026-11-19', endDate: '2026-11-22', title: 'Hotel Rom (geplant)', catId: 'unterkunft', plan: { amount: 900, currency: 'EUR' } })).data.created[0];
   await page.reload(); // neue Reise laden
   await openImport();
   await page.setInputFiles('dialog[open] input[type=file]', new URL('booking-de.msg', MAILS).pathname);
@@ -126,9 +128,17 @@ test('Outlook-.msg: teilweise bezahlt → Zahlung über bezahlten Betrag, Rest v
   await page.waitForSelector('dialog[open] .import-review');
   assert.equal(await page.inputValue('dialog[open] .import-trip select'), trip2);
   assert.equal(await page.inputValue('dialog[open] [data-val="payment"]'), 'teilweise');
+  // geplante Unterkunft in denselben Nächten wird als Ziel vorgeschlagen (nicht doppelt anlegen)
+  assert.equal(await page.inputValue('dialog[open] select[data-target]'), placeholder.id);
+  assert.equal(await page.isChecked('dialog[open] input[data-key="title"]'), true);
   await page.click('dialog[open] footer button:has-text("Übernehmen")');
   await page.waitForSelector('dialog[open]', { state: 'detached' });
-  const it = (await api('GET', '/api/data')).data.trips.find((t) => t.id === trip2).items[0];
+  const all = (await api('GET', '/api/data')).data.trips.find((t) => t.id === trip2).items;
+  assert.equal(all.length, 1);
+  const it = all[0];
+  assert.equal(it.id, placeholder.id);
+  assert.equal(it.title, 'Albergo Esempio');
+  assert.equal(it.bookingRef, '9876543210');
   assert.deepEqual(it.plan, { amount: 1172, currency: 'EUR' });
   assert.equal(it.payments[0].amount, 1100);
   assert.equal(it.payWhere, 'vorort');

@@ -3,6 +3,7 @@
 import { h, toast, modal } from '../ui.js';
 import { state, api, settings, render, go, newId, selectTrip } from '../app.js';
 import { readSource, parseBooking } from '../booking-parse.js';
+import { editItem } from './item.js';
 import { fmtCur, fmtDate, fmtDay, todayStr, addDays, isDate, evalExpr, round2, isCashMethod } from '../calc.js';
 
 const norm = (s) => String(s || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -76,15 +77,17 @@ async function review(input) {
 
   const mainDate = r.kind === 'flight' ? r.fields.segments?.[0]?.date : r.fields.checkIn;
   let tripId = suggestTrip(mainDate);
+  let targetId; // undefined = automatisch (bester Treffer), '' = neuer Posten
   const body = h('div', { class: 'import-review' });
-  const draw = () => body.replaceChildren(...reviewContent(r, tripId, (id) => { tripId = id; draw(); }));
+  const draw = () => body.replaceChildren(...reviewContent(r, tripId, (id) => { tripId = id; targetId = undefined; draw(); }, targetId, (id) => { targetId = id; draw(); }));
   draw();
   const ok = await modal(`${r.provider?.name || 'Buchung'} – ${r.kind === 'flight' ? 'Flug' : r.kind === 'hotel' ? 'Unterkunft' : 'unbekannt'}${r.status === 'cancelled' ? ' (storniert)' : ''}`, body, [
     { label: 'Abbrechen', value: null },
     { label: 'Übernehmen', primary: true, onClick: async () => {
       try {
-        const msg = await apply(r, tripId, body, beleg);
-        toast(msg, { duration: 6000, action: { label: 'Anzeigen', fn: () => { selectTrip(tripId); go('plan'); } } });
+        const { msg, item } = await apply(r, tripId, body, beleg);
+        // «Anzeigen» öffnet den übernommenen Posten direkt
+        toast(msg, { duration: 8000, action: { label: 'Anzeigen', fn: () => { selectTrip(tripId); if (item) editItem(item); else go('plan'); } } });
         return 'ok';
       } catch (e) {
         body.querySelector('.form-error').textContent = e.message;
@@ -107,15 +110,48 @@ function suggestTrip(date) {
 
 const tripOf = (id) => state.data.trips.find((t) => t.id === id);
 
-/** Bestehenden Posten finden: gleiche Buchungsnummer (Hotel) bzw. gleiche Flugnummer + Datum */
+/** Bestehenden Flug finden: gleiche Flugnummer + Datum */
 function findExisting(t, r, seg) {
   if (!t) return null;
-  const ref = norm(r.fields.bookingRef);
-  if (seg) {
-    const fn = norm(seg.flightNo);
-    return t.items.find((it) => it.date === seg.date && norm(it.title).startsWith(fn)) || null;
+  const fn = norm(seg.flightNo);
+  return t.items.find((it) => it.date === seg.date && norm(it.title).startsWith(fn)) || null;
+}
+
+/**
+ * Mögliche bestehende Posten für eine Unterkunft: gleiche Buchungsnummer, sonst eine Unterkunft mit
+ * überschneidenden Nächten (z.B. aus der Excel übernommen oder von Hand geplant), sonst gleicher Tag + ähnlicher Name.
+ * → [{item, score, why}] beste zuerst
+ */
+function candidates(t, r) {
+  if (!t) return [];
+  const f = r.fields;
+  const ref = norm(f.bookingRef);
+  const words = (x) => new Set(String(x || '').toLowerCase().split(/[^a-zà-ÿ0-9]+/).filter((w) => w.length > 2 && !['hotel', 'the', 'und', 'and'].includes(w)));
+  const nameW = words(f.name);
+  const similar = (it) => [...words(it.title)].some((w) => nameW.has(w));
+  const ci = f.checkIn, co = f.checkOut || (ci ? addDays(ci, 1) : '');
+  const out = [];
+  for (const it of t.items) {
+    let score = 0, why = '';
+    if (ref && norm(it.bookingRef) === ref) { score = 100; why = 'gleiche Buchungsnummer'; }
+    else if (ci && isDate(it.date)) {
+      const itEnd = it.endDate || addDays(it.date, 1);
+      const overlap = it.date < co && itEnd > ci;
+      const lodging = it.catId === 'unterkunft' || !!it.endDate;
+      if (overlap && lodging) { score = similar(it) ? 80 : 60; why = 'Unterkunft in denselben Nächten'; }
+      else if (it.date === ci && similar(it)) { score = 50; why = 'gleicher Tag, ähnlicher Name'; }
+    }
+    if (score) out.push({ item: it, score, why });
   }
-  return (ref && t.items.find((it) => norm(it.bookingRef) === ref)) || null;
+  return out.sort((a, b) => b.score - a.score);
+}
+
+/** Auswahl «Übernehmen in»: neuer Posten oder einer der Kandidaten */
+function targetPicker(cands, chosenId, setTarget) {
+  return h('label', { class: 'import-trip' }, 'Übernehmen in',
+    h('select', { 'data-target': '1', onchange: (e) => setTarget(e.target.value) },
+      h('option', { value: '', selected: !chosenId }, '➕ Neuer Posten'),
+      cands.map((c) => h('option', { value: c.item.id, selected: c.item.id === chosenId }, `↻ «${c.item.title}» · ${fmtDate(c.item.date)}${c.item.endDate ? '–' + fmtDate(c.item.endDate) : ''} (${c.why})`))));
 }
 
 // Feldzeile: ✓ | Feld | erkannt (bearbeitbar) | bisher
@@ -133,7 +169,7 @@ function row(key, label, value, current, opts = {}) {
   );
 }
 
-function reviewContent(r, tripId, setTrip) {
+function reviewContent(r, tripId, setTrip, targetId, setTarget) {
   const f = r.fields;
   const t = tripOf(tripId);
   const S = settings();
@@ -144,15 +180,19 @@ function reviewContent(r, tripId, setTrip) {
   if (r.warnings.length) out.push(h('ul', { class: 'warn-list' }, r.warnings.map((w) => h('li', null, w))));
 
   // ----- Stornierung -----
+  const cands = r.kind === 'flight' ? [] : candidates(t, r);
+  const chosen = targetId === undefined ? (cands[0]?.score >= 50 ? cands[0].item.id : '') : targetId;
+  const exChosen = t?.items.find((x) => x.id === chosen) || null;
   if (r.status === 'cancelled') {
-    const ex = findExisting(t, r);
+    const ex = exChosen;
+    if (cands.length) out.push(targetPicker(cands, chosen, setTarget));
     out.push(h('div', { class: 'conflict' },
       h('p', null, ex ? `Passender Posten: «${ex.title}» (${fmtDay(ex.date)}), Buchung ${ex.bookingRef || f.bookingRef}.` : `Keine Buchung ${f.bookingRef || ''} in dieser Reise gefunden.`),
       ex ? h('div', { class: 'stack' },
         h('label', { class: 'check' }, h('input', { type: 'radio', name: 'storno', value: 'mark', checked: true }), 'Als storniert markieren (Betrag 0, Notiz «storniert», Zahlungen bleiben)'),
         h('label', { class: 'check' }, h('input', { type: 'radio', name: 'storno', value: 'delete' }), 'Posten löschen'),
         h('label', { class: 'check' }, h('input', { type: 'radio', name: 'storno', value: 'none' }), 'Nichts ändern, nur Beleg anhängen')) : null,
-      h('input', { type: 'hidden', 'data-existing': ex?.id || '' })));
+    ));
     out.push(belegRow(), h('p', { class: 'form-error' }));
     return out;
   }
@@ -181,9 +221,10 @@ function reviewContent(r, tripId, setTrip) {
   }
 
   // ----- Unterkunft (oder Unbekanntes) -----
-  const ex = findExisting(t, r);
+  const ex = exChosen;
   const cur = (v) => (ex ? v : undefined);
-  if (ex) out.push(h('p', { class: 'small' }, `Bekannte Buchung: «${ex.title}» wird aktualisiert. Geänderte Werte sind vorausgewählt.`));
+  if (cands.length) out.push(targetPicker(cands, chosen, setTarget));
+  if (ex) out.push(h('p', { class: 'small' }, `«${ex.title}» wird aktualisiert – rechts steht jeweils der bisherige Wert, geänderte Werte sind vorausgewählt.`));
   const detail = [f.checkInTime ? `Check-in ab ${f.checkInTime}` : '', f.checkOutTime ? `Check-out bis ${f.checkOutTime}` : ''].filter(Boolean).join(' · ');
   const notes = [f.pin ? `PIN ${f.pin}` : '', f.guests ? `${f.guests} Personen` : '', f.rooms ? `${f.rooms} Zimmer` : '', f.nonRefundable ? 'nicht kostenlos stornierbar' : ''].filter(Boolean).join(' · ');
   out.push(h('table', { class: 'import-table' }, h('tbody', null,
@@ -199,7 +240,6 @@ function reviewContent(r, tripId, setTrip) {
     paymentRow(f, S, ex),
     row('freeCancel', 'Kostenlos stornierbar bis', f.freeCancelUntil || '', undefined, { input: h('input', { type: 'date', value: f.freeCancelUntil || '', 'data-val': 'freeCancel' }), hint: 'wird ein To-do mit Fälligkeit' }),
     row('link', 'Link zur Buchung', f.link || '', cur(ex?.link)))));
-  out.push(h('input', { type: 'hidden', 'data-existing': ex?.id || '' }));
   out.push(belegRow(), h('p', { class: 'form-error' }));
   return out;
 }
@@ -266,18 +306,18 @@ async function apply(r, tripId, body, beleg) {
 
   // Stornierung
   if (r.status === 'cancelled') {
-    const exId = body.querySelector('[data-existing]')?.dataset.existing;
+    const exId = body.querySelector('[data-target]')?.value || '';
     const ex = t.items.find((x) => x.id === exId);
     const what = body.querySelector('input[name=storno]:checked')?.value || 'none';
-    if (!ex) return 'Keine passende Buchung gefunden – nichts geändert';
+    if (!ex) return { msg: 'Keine passende Buchung gefunden – nichts geändert' };
     if (what === 'delete') {
       await api('DELETE', `/api/trips/${t.id}/items/${ex.id}`);
       t.items = t.items.filter((x) => x.id !== ex.id);
-      return `«${ex.title}» gelöscht`;
+      return { msg: `«${ex.title}» gelöscht` };
     }
-    if (what === 'mark') await saveUpd({ ...ex, plan: { ...ex.plan, amount: 0 }, reserved: false, note: [ex.note, `storniert (${fmtDate(todayStr())})`].filter(Boolean).join('\n') });
+    const upd = what === 'mark' ? await saveUpd({ ...ex, plan: { ...ex.plan, amount: 0 }, reserved: false, note: [ex.note, `storniert (${fmtDate(todayStr())})`].filter(Boolean).join('\n') }) : ex;
     await attach(ex.id);
-    return what === 'mark' ? `«${ex.title}» als storniert markiert` : 'Beleg angehängt';
+    return { msg: what === 'mark' ? `«${ex.title}» als storniert markiert` : 'Beleg angehängt', item: t.items.find((x) => x.id === upd.id) };
   }
 
   // Flüge
@@ -285,7 +325,7 @@ async function apply(r, tripId, body, beleg) {
     const price = valOf(body, 'price') !== undefined ? parsePrice(valOf(body, 'price')) : null;
     const ref = valOf(body, 'bookingRef') ?? '';
     const link = valOf(body, 'link') ?? '';
-    let first = true, n = 0;
+    let first = true, n = 0, firstItem = null;
     for (const [i, s] of (r.fields.segments || []).entries()) {
       if (!body.querySelector(`[data-seg-on="${i}"]`)?.checked) continue;
       const title = body.querySelector(`[data-seg-title="${i}"]`).value.trim();
@@ -295,21 +335,21 @@ async function apply(r, tripId, body, beleg) {
       const base = { title, date, time: /^\d{2}:\d{2}$/.test(dep) ? dep : '', detail: arr ? `an ${arr}` : '', catId: 'flug', bookingRef: ref, link };
       const ex = findExisting(t, r, { ...s, date });
       if (ex) {
-        await saveUpd({ ...ex, ...base, ...(first && price ? { plan: price } : {}) });
-        if (first) await attach(ex.id);
+        const u = await saveUpd({ ...ex, ...base, ...(first && price ? { plan: price } : {}) });
+        if (first) { await attach(ex.id); firstItem = u; }
       } else {
         const pay = first ? payment(price) : null;
         const it = await saveNew({ ...blank(t), ...base, plan: first && price ? price : { amount: 0, currency: price?.currency || 'CHF' }, payWhere: 'vorgaengig', payments: pay ? [pay] : [] });
-        if (first) await attach(it.id);
+        if (first) { await attach(it.id); firstItem = it; }
       }
       first = false;
       n++;
     }
-    return `${n} Flug${n === 1 ? '' : 'e'} übernommen`;
+    return { msg: `${n} Flug${n === 1 ? '' : 'e'} übernommen`, item: firstItem && t.items.find((x) => x.id === firstItem.id) };
   }
 
   // Unterkunft
-  const exId = body.querySelector('[data-existing]')?.dataset.existing;
+  const exId = body.querySelector('[data-target]')?.value || '';
   const ex = t.items.find((x) => x.id === exId);
   const item = ex ? structuredClone(ex) : { ...blank(t), catId: r.kind === 'hotel' ? 'unterkunft' : 'sonstiges' };
   for (const k of ['title', 'date', 'endDate', 'detail', 'address', 'phone', 'bookingRef', 'link']) {
@@ -339,7 +379,7 @@ async function apply(r, tripId, body, beleg) {
   }
   const saved = ex ? await saveUpd(item) : await saveNew(item);
   await attach(saved.id);
-  return ex ? `«${saved.title}» aktualisiert` : `«${saved.title}» übernommen${saved.plan.amount ? ` · ${fmtCur(saved.plan.amount, saved.plan.currency)}` : ''}`;
+  return { msg: ex ? `«${saved.title}» aktualisiert` : `«${saved.title}» als neuer Posten übernommen${saved.plan.amount ? ` · ${fmtCur(saved.plan.amount, saved.plan.currency)}` : ''}`, item: t.items.find((x) => x.id === saved.id) };
 }
 
 function blank(t) {

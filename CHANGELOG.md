@@ -3,6 +3,11 @@
 Neueste Version zuoberst. Format: `## Version – Datum`, darunter je eine Zeile pro Änderung.
 Die Version steht auch in `package.json` und unter «Mehr → Über Reisli».
 
+## 1.3.1 – 2026-10-29
+- Fehler behoben: Buchung importieren legte einen neuen Posten an, obwohl die Unterkunft schon geplant war (ohne Buchungsnummer). Jetzt wird eine Unterkunft in denselben Nächten erkannt und vorgeschlagen; über «Übernehmen in» lässt sich frei wählen: neuer Posten oder ein bestehender.
+- «Anzeigen» nach dem Import öffnet den übernommenen Posten direkt.
+- Heute → Belege & Tickets: Antippen des Titels öffnet den Posten (dort lassen sich Belege löschen).
+
 ## 1.3.0 – 2026-10-29
 - Neu: «Mehr → Über Reisli → Nach Updates suchen / Jetzt aktualisieren» – neue Versionen ohne SSH einspielen; Reisli sichert vorher und startet von selbst neu. Zurück zu einer früheren Version ebenfalls möglich.
 - Angeboten werden nur Versionen, die auf GitHub alle Tests bestanden haben (automatische Markierung vX.Y.Z).

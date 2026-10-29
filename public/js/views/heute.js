@@ -187,7 +187,7 @@ function receiptsCard(t) {
       withFiles.length
         ? h('ul', { class: 'receipts' }, withFiles.map((it) => h('li', null,
             h('span', { class: 'muted small r-date' }, fmtDay(it.date)),
-            h('div', null, h('div', { class: 'r-title' }, it.title), fileButtons(it))
+            h('div', null, h('button', { class: 'linklike r-title', title: 'Posten öffnen (Belege verwalten)', onclick: () => editItem(it) }, it.title), fileButtons(it))
           )))
         : h('p', { class: 'muted' }, 'Noch keine Belege. Im Posten unter «Belege» Tickets, Buchungsbestätigungen usw. anhängen.')
     ),
