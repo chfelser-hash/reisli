@@ -4,7 +4,8 @@ ENV NODE_ENV=production \
     PORT=8081 \
     DATA_DIR=/data
 
-RUN apk add --no-cache su-exec
+# git: für «Aktualisieren» unter Mehr (Programmordner ist dann ein Git-Klon, siehe docker-compose.yml)
+RUN apk add --no-cache su-exec git && git config --system --add safe.directory '*'
 WORKDIR /app
 COPY package.json CHANGELOG.md ./
 COPY server ./server

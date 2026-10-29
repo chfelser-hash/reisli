@@ -45,6 +45,21 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  privacy:
+    name: Datenschutz-Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Keine persönlichen Daten im Repo
+        run: npm run privacy
+        env:
+          # Eigene Begriffe (z.B. voller Name), kommagetrennt – nur als GitHub-Secret, nie im Repo
+          PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
+
   docker:
     name: Docker-Image (wie auf der NAS)
     runs-on: ubuntu-latest
@@ -62,3 +77,36 @@ jobs:
           done
           docker logs reisli
           exit 1
+      - name: Wie auf der NAS mit eingebundenem Git-Ordner (Aktualisieren über die App)
+        run: |
+          docker run -d --name reisli2 -p 8082:8081 -v "$PWD":/app -e RESTART_ON_UPDATE=true reisli-test
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8082/api/status; then echo; echo "Reisli läuft (Git-Modus)"; exit 0; fi
+            sleep 1
+          done
+          docker logs reisli2
+          exit 1
+
+  # Nur wenn alles grün ist: Version als vX.Y.Z markieren – nur solche bietet «Aktualisieren» in der App an
+  release:
+    name: Version markieren
+    needs: [tests, privacy, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Tag setzen, falls die Version neu ist
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "$v gibt es schon – nichts zu tun" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git tag "$v"
+          git push origin "$v"
+          echo "### Neue Version $v freigegeben" >> "$GITHUB_STEP_SUMMARY"

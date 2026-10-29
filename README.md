@@ -102,7 +102,19 @@ Die Daten liegen in `/docker/reisli/data` (Reisen, Belege, tägliche Sicherungen
 
 ### Update
 
-`git pull` (bzw. neue Version ins Verzeichnis kopieren), dann im Container Manager das Projekt **stoppen → erstellen (Build) → starten**. Die Daten bleiben erhalten.
+**Über die App (ab Version 1.3.0):** «Mehr → Über Reisli → Nach Updates suchen». Angeboten werden nur Versionen, die auf GitHub alle Tests bestanden haben. Reisli legt vorher eine Sicherung an, holt den neuen Stand und startet von selbst neu; auch «zurück zu einer früheren Version» ist dort möglich.
+
+**Einmalige Umstellung per SSH** (danach nicht mehr nötig):
+```sh
+cd /volume1/docker/reisli
+sudo git remote set-url origin https://github.com/chfelser-hash/reisli.git   # öffentliches Repo, ohne Zugangsdaten
+sudo git config --global --add safe.directory /volume1/docker/reisli
+sudo git pull
+sudo docker compose up -d --build
+```
+Seither nimmt der Container den Programmcode direkt aus diesem Ordner (siehe `docker-compose.yml`), darum genügt ein Neustart statt eines Neubaus.
+
+**Von Hand** geht es weiterhin: `cd /volume1/docker/reisli && sudo git pull && sudo docker compose up -d --build`. Nur wenn sich `Dockerfile` oder `docker-compose.yml` ändern, ist das nötig – die Änderungsliste sagt es dann ausdrücklich.
 
 ## 4. Sicherung
 
@@ -149,6 +161,8 @@ im Heimnetz läuft Reisli wie bisher, aber ohne Offline-Modus.
 
 - **Version** in `package.json`, Änderungen in `CHANGELOG.md` (zu sehen unter «Mehr → Über Reisli»). Fehlerkorrekturen → 1.0.**x**, neue Funktionen → 1.**x**.0, grosse Umbauten → **x**.0.0.
 - **Tests** nach dem Pyramiden-Prinzip: Rechenlogik möglichst lückenlos, jeder API-Aufruf mit Erfolgs- und Fehlerfällen, wenige Browser-Abläufe für die wichtigsten Wege (inkl. offline). Nur erfundene Testdaten.
+- **Datenschutz-Check** bei jedem Push (`npm run privacy`): keine echten E-Mail-Adressen, Kartennummern, IBAN, Excel-/Mail-/PDF-Dateien ausserhalb der erfundenen Testvorlagen. Eigene Begriffe (z.B. der volle Name) als GitHub-Secret `PRIVATE_PATTERNS` (kommagetrennt) hinterlegen – nie im Repo.
+- **Freigabe:** Ist alles grün, markiert GitHub die Version als `vX.Y.Z`. Nur solche Versionen bietet «Aktualisieren» in der App an.
 - **Regeln:** Jeder gefundene Fehler bekommt einen Test, der ihn nachstellt. Jede neue Funktion kommt mit Tests. Auf GitHub muss die Testabdeckung Mindestwerte erreichen (Zeilen 90 %, Zweige 75 %, Funktionen 85 %), sonst wird der Lauf rot.
 
 ## Technisches

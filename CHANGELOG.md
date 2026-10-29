@@ -3,6 +3,12 @@
 Neueste Version zuoberst. Format: `## Version – Datum`, darunter je eine Zeile pro Änderung.
 Die Version steht auch in `package.json` und unter «Mehr → Über Reisli».
 
+## 1.3.0 – 2026-10-29
+- Neu: «Mehr → Über Reisli → Nach Updates suchen / Jetzt aktualisieren» – neue Versionen ohne SSH einspielen; Reisli sichert vorher und startet von selbst neu. Zurück zu einer früheren Version ebenfalls möglich.
+- Angeboten werden nur Versionen, die auf GitHub alle Tests bestanden haben (automatische Markierung vX.Y.Z).
+- Datenschutz-Check auf GitHub: verhindert, dass E-Mail-Adressen, Kartennummern, IBAN, Excel-/Mail-/PDF-Dateien oder geheime Begriffe ins öffentliche Repo gelangen.
+- Einmalig nötig: Umstellung auf der NAS per SSH (siehe README, «Aktualisieren über die App»).
+
 ## 1.2.0 – 2026-10-29
 - Neu: Outlook-Nachrichten (.msg) direkt importieren – auch per Drag & Drop aus Outlook.
 - PDF-Import stark verbessert: Belege und Voucher, die im Browser gedruckt wurden («Als PDF speichern») oder eingebettete Schriften nutzen, werden jetzt gelesen; Zeilen und Spalten bleiben erhalten.

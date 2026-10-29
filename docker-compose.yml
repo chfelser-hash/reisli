@@ -10,9 +10,14 @@ services:
     volumes:
       # Daten bleiben ausserhalb des Containers (auf der Synology z.B. /volume1/docker/reisli/data)
       - ./data:/data
+      # Programmcode direkt aus diesem Git-Ordner: «Mehr → Über Reisli → Aktualisieren» holt neue Versionen
+      # ohne Neubau des Containers. Wer das nicht will: diese Zeile entfernen und UPDATE_ENABLED=false setzen.
+      - ./:/app
     environment:
       - TZ=Europe/Zurich
       # Auf "true" setzen, wenn die App nur über HTTPS (Reverse Proxy) erreichbar ist
       - COOKIE_SECURE=false
       # Wechselkurse täglich automatisch holen (EZB-Kurse via frankfurter.app). "false" = nur manuell
       - AUTO_RATES=true
+      # Nach «Aktualisieren» neu starten (Docker startet den Container automatisch wieder)
+      - RESTART_ON_UPDATE=true

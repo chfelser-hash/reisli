@@ -258,9 +258,70 @@ function aboutCard() {
         h('ul', null, c.changes.map((x) => h('li', null, x))))));
     } catch (ex) { list.replaceChildren(h('p', { class: 'muted small' }, ex.message)); }
   } }, h('summary', null, 'Was ist neu?'), list);
+  const upd = h('div', { class: 'update-box' });
+  const checkBtn = h('button', { class: 'btn small', onclick: () => checkUpdates(upd, checkBtn) }, 'Nach Updates suchen');
   return card('about', 'Über Reisli',
     h('p', null, h('strong', null, `Version ${v}`), state.data.versionDate ? h('span', { class: 'muted' }, ` · ${fmtDate(state.data.versionDate)}`) : null),
-    h('p', { class: 'muted small' }, 'Läuft auf dem Reisli-Server (NAS). Nach einem Update meldet die App «Neue Version verfügbar».'),
+    h('div', { class: 'row gap wrap' }, checkBtn),
+    upd,
     det
   );
+}
+
+// ---------- Aktualisieren ----------
+async function checkUpdates(box, btn) {
+  btn.disabled = true;
+  box.replaceChildren(h('p', { class: 'muted small' }, 'Frage GitHub nach neuen Versionen …'));
+  let r;
+  try {
+    r = await api('GET', '/api/update');
+  } catch (ex) {
+    btn.disabled = false;
+    return box.replaceChildren(h('p', { class: 'form-error' }, ex.message));
+  }
+  btn.disabled = false;
+  if (!r.enabled) return box.replaceChildren(h('p', { class: 'muted small' }, r.reason));
+  const parts = [];
+  if (r.dirty?.length) parts.push(h('p', { class: 'warn small' }, `Achtung: ${r.dirty.length} Programmdatei(en) wurden auf der NAS von Hand geändert – eine Aktualisierung überschreibt sie.`));
+  if (r.newer.length) {
+    const target = r.newer[0];
+    parts.push(
+      h('p', null, h('strong', null, `Version ${target} verfügbar`), r.newer.length > 1 ? h('span', { class: 'muted small' }, ` (${r.newer.length} neue Versionen)`) : null),
+      r.changelog.length ? h('div', { class: 'changelog' }, r.changelog.map((c) => h('div', { class: 'cl-entry' },
+        h('strong', null, c.version), h('span', { class: 'muted small' }, ' · ' + fmtDate(c.date)),
+        h('ul', null, c.changes.map((x) => h('li', null, x)))))) : null,
+      h('button', { class: 'btn primary', onclick: () => applyUpdate(box, target, false) }, `Jetzt auf ${target} aktualisieren`)
+    );
+  } else parts.push(h('p', { class: 'pos small' }, `✓ Reisli ist aktuell (${r.current}).`));
+  const others = r.versions.filter((x) => x !== r.current && !r.newer.includes(x));
+  if (others.length) {
+    const sel = h('select', null, others.map((x) => h('option', { value: x }, x)));
+    parts.push(h('details', { class: 'help' }, h('summary', null, 'Zu einer früheren Version zurück'),
+      h('p', { class: 'small muted' }, 'Falls nach einem Update etwas nicht passt. Eure Daten bleiben, vorher wird gesichert.'),
+      h('div', { class: 'row gap' }, sel, h('button', { class: 'btn small', onclick: () => applyUpdate(box, sel.value, true) }, 'Wechseln'))));
+  }
+  box.replaceChildren(...parts.filter(Boolean));
+}
+
+async function applyUpdate(box, target, back) {
+  if (!(await confirmDialog(back ? 'Frühere Version' : 'Aktualisieren',
+    `Reisli auf Version ${target} umstellen? Vorher wird eine Sicherung angelegt. Reisli startet danach neu (ein paar Sekunden) – bitte keine Eingaben in dieser Zeit.`, back ? 'Wechseln' : 'Aktualisieren', back))) return;
+  box.replaceChildren(h('p', null, `Stelle auf ${target} um …`));
+  let r;
+  try {
+    r = await api('POST', '/api/update', { version: target });
+  } catch (ex) {
+    return box.replaceChildren(h('p', { class: 'form-error' }, ex.message));
+  }
+  if (!r.restart) return box.replaceChildren(h('p', { class: 'warn' }, `Version ${target} ist eingespielt. Bitte Reisli jetzt neu starten (z.B. start.bat schliessen und wieder öffnen).`));
+  box.replaceChildren(h('p', null, 'Reisli startet neu …'));
+  // Warten, bis der Server mit der neuen Version antwortet, dann die Seite neu laden
+  for (let i = 0; i < 60; i++) {
+    await new Promise((res) => setTimeout(res, 2000));
+    try {
+      const st = await (await fetch('/api/status', { cache: 'no-store' })).json();
+      if (st.version === target) { location.reload(); return; }
+    } catch { /* startet noch */ }
+  }
+  box.replaceChildren(h('p', { class: 'warn' }, 'Reisli antwortet noch nicht mit der neuen Version. Seite in einer Minute neu laden.'));
 }

@@ -9,6 +9,7 @@ import { cleanItem, cleanTripMeta, cleanDay, cleanTrip, cleanSettings, cleanRepa
 import { importTripFromExcel, applySettingsPatch } from './excel-import.js';
 import { fetchRates, applyRates, toChfPerUnit, describeFetchError, KNOWN, RATE_URLS } from './rates.js';
 import { copyTrip, tripCsv, mergeItems } from '../public/js/calc.js';
+import { createUpdater } from './update.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -33,6 +34,9 @@ function readChangelog() {
 }
 const CHANGELOG = readChangelog();
 const VERSION_DATE = CHANGELOG.find((x) => x.version === VERSION)?.date || '';
+// Aktualisieren über die App (siehe server/update.js). UPDATE_ROOT nur für Tests.
+const updater = createUpdater({ root: process.env.UPDATE_ROOT || ROOT, version: VERSION, enabled: process.env.UPDATE_ENABLED !== 'false' });
+const RESTART_ON_UPDATE = process.env.RESTART_ON_UPDATE === 'true';
 
 fs.mkdirSync(FILES_DIR, { recursive: true });
 const store = new Store(DATA_DIR);
@@ -252,6 +256,18 @@ async function api(req, res, url) {
   if (p === '/api/data' && method === 'GET') return send(res, 200, publicData(user));
   if (p === '/api/rev' && method === 'GET') return send(res, 200, { rev: store.rev, version: VERSION });
   if (p === '/api/changelog' && method === 'GET') return send(res, 200, { version: VERSION, date: VERSION_DATE, changelog: CHANGELOG.slice(0, 20) });
+
+  // ----- Aktualisieren -----
+  if (p === '/api/update' && method === 'GET') return send(res, 200, await updater.check());
+  if (p === '/api/update' && method === 'POST') {
+    const b = await readBody(req);
+    const backup = store.snapshot('vor-update-' + String(b.version || '').replace(/[^\d.]/g, ''));
+    const r = await updater.apply(b.version);
+    send(res, 200, { ...r, backup, restart: RESTART_ON_UPDATE });
+    // Docker startet den Container neu (restart: unless-stopped) – mit dem neuen Programmcode
+    if (RESTART_ON_UPDATE) setTimeout(() => process.exit(0), 500);
+    return;
+  }
 
   // ----- Reisen -----
   if (p === '/api/trips' && method === 'POST') {
