@@ -117,6 +117,25 @@ test('SWISS: zwei Flüge, Preis und Zahlung beim ersten', T, async () => {
   assert.equal(flights[0].bookingRef, 'K7XQ2P');
 });
 
+test('Outlook-.msg: teilweise bezahlt → Zahlung über bezahlten Betrag, Rest vor Ort', T, async () => {
+  const trip2 = (await api('POST', '/api/trips', { name: 'Rom', start: '2026-11-18', end: '2026-11-23', currency: 'EUR' })).data.trip.id;
+  await page.reload(); // neue Reise laden
+  await openImport();
+  await page.setInputFiles('dialog[open] input[type=file]', new URL('booking-de.msg', MAILS).pathname);
+  await page.click('dialog[open] button:has-text("Erkennen")');
+  await page.waitForSelector('dialog[open] .import-review');
+  assert.equal(await page.inputValue('dialog[open] .import-trip select'), trip2);
+  assert.equal(await page.inputValue('dialog[open] [data-val="payment"]'), 'teilweise');
+  await page.click('dialog[open] footer button:has-text("Übernehmen")');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  const it = (await api('GET', '/api/data')).data.trips.find((t) => t.id === trip2).items[0];
+  assert.deepEqual(it.plan, { amount: 1172, currency: 'EUR' });
+  assert.equal(it.payments[0].amount, 1100);
+  assert.equal(it.payWhere, 'vorort');
+  assert.match(it.note, /nicht kostenlos stornierbar/);
+  assert.equal(it.files[0].name, 'booking-de.msg');
+});
+
 test('Abbrechen übernimmt nichts; keine JavaScript-Fehler', T, async () => {
   const n = (await items()).length;
   await openImport();

@@ -1,6 +1,6 @@
 {
   "name": "reisli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Reisli – Ferienbudget als Web-App (PWA) – lokal oder auf einer Synology NAS betreibbar",
   "private": true,
   "type": "module",

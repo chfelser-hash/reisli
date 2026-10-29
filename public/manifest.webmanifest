@@ -59,7 +59,7 @@
           "accept": [
             "application/pdf",
             ".pdf",
-            "message/rfc822",
+            "message/rfc822", "application/vnd.ms-outlook", ".msg",
             ".eml",
             "text/plain",
             ".txt",

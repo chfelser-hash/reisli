@@ -137,3 +137,51 @@ test('Bausteine: Daten, Beträge, Zahlen, HTML, Mail-Kopfzeilen', () => {
   assert.equal(m.subject, 'Bestätigung');
   assert.equal(m.text, 'Hallo');
 });
+
+// Nach echten Beispielen nachgebaut (Inhalte erfunden): Outlook-.msg, Zahlungsbeleg und Voucher als Browser-PDF
+test('Booking.com als Outlook-Nachricht (.msg): Tabulatoren, eingebettete Links, teilweise bezahlt', async () => {
+  const { src, r } = await load('booking-de.msg');
+  assert.equal(src.kind, 'msg');
+  assert.equal(src.subject, '🛄 Danke! Ihre Buchung ist bestätigt: Albergo Esempio');
+  assert.equal(r.provider.name, 'Booking.com');
+  const f = r.fields;
+  assert.equal(f.name, 'Albergo Esempio');
+  assert.equal(f.bookingRef, '9876543210'); // Zeile beginnt mit einem Link
+  assert.equal(f.pin, '1357');
+  assert.equal(f.checkIn, '2026-11-19');
+  assert.equal(f.checkOutTime, '11:00');
+  assert.equal(f.address, "Via dell'Esempio 7, Centro, 00100 Roma, Italien"); // Beschriftung «Lage»
+  assert.deepEqual(f.price, { amount: 1172, currency: 'EUR' }); // Gesamtpreis inkl. Kurtaxe
+  assert.equal(f.paidAmount, 1100); // «Insgesamt bezahlt»
+  assert.equal(f.payment, 'teilweise'); // Kurtaxe vor Ort
+  assert.equal(f.nonRefundable, true);
+  assert.equal(f.freeCancelUntil, undefined); // «nicht kostenfrei stornierbar» ist kein Datum
+  assert.match(f.link, /confirmation\.de\.html\?bn=9876543210/); // nicht der Tracking-Pixel
+});
+
+test('Booking.com-Zahlungsbeleg als PDF (Browser-Druck, eingebettete Schrift, zwei Spalten)', async () => {
+  const { src, r } = await load('booking-beleg-de.pdf');
+  assert.equal(src.kind, 'pdf');
+  assert.ok(!src.unreadable);
+  assert.match(src.text, /Name der Unterkunft Albergo Esempio/);
+  assert.equal(r.fields.name, 'Albergo Esempio');
+  assert.equal(r.fields.address, "Via dell'Esempio 7, Roma, Italy, 00100"); // mehrzeilig
+  assert.equal(r.fields.bookingRef, '1234567890');
+  assert.equal(r.fields.checkIn, '2026-11-19');
+  assert.equal(r.fields.checkOut, '2026-11-22');
+  assert.deepEqual(r.fields.price, { amount: 1234.56, currency: 'EUR' });
+  assert.equal(r.fields.payment, 'bezahlt');
+});
+
+test('Hotel-Voucher als PDF: Tabellenkopf mit Werten darunter, Name ohne Beschriftung', async () => {
+  const { r } = await load('voucher-en.pdf');
+  assert.equal(r.kind, 'hotel');
+  assert.equal(r.fields.name, 'Palm Bay Resort');
+  assert.equal(r.fields.address, '12 Moo 4, Tambon Ao-Nang, 81000 Krabi, TH');
+  assert.equal(r.fields.checkIn, '2027-02-18');
+  assert.equal(r.fields.checkOut, '2027-02-20');
+  assert.equal(r.fields.bookingRef, '99887766'); // nicht «Confirmation Status»
+  assert.equal(r.fields.payment, 'bezahlt'); // «Prepaid»
+  assert.equal(r.fields.nonRefundable, true);
+  assert.equal(r.fields.guests, 2);
+});

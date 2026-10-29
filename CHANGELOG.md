@@ -3,6 +3,13 @@
 Neueste Version zuoberst. Format: `## Version – Datum`, darunter je eine Zeile pro Änderung.
 Die Version steht auch in `package.json` und unter «Mehr → Über Reisli».
 
+## 1.2.0 – 2026-10-29
+- Neu: Outlook-Nachrichten (.msg) direkt importieren – auch per Drag & Drop aus Outlook.
+- PDF-Import stark verbessert: Belege und Voucher, die im Browser gedruckt wurden («Als PDF speichern») oder eingebettete Schriften nutzen, werden jetzt gelesen; Zeilen und Spalten bleiben erhalten.
+- Erkennung verbessert (nach echten Beispielen): Booking.com-Zahlungsbeleg, Hotel-Voucher ohne Beschriftungen (Tabellenkopf mit Werten darunter), mehrzeilige Adressen, «Lage», Buchungsnummer hinter einem Link.
+- Teilweise bezahlt (z.B. Kurtaxe direkt an die Unterkunft): Zahlung über den bezahlten Betrag, Rest vor Ort.
+- «Nicht erstattungsfähig / nicht kostenfrei stornierbar» wird erkannt und in der Notiz vermerkt; Link zur Buchung statt Tracking-Pixel.
+
 ## 1.1.0 – 2026-10-29
 - Neu: «Buchung importieren» (im Plan): Bestätigung als E-Mail (.eml), PDF, HTML oder eingefügter Text – Booking.com, Agoda, Hotels.com, trivago, Expedia, Airbnb und Flüge (SWISS, Edelweiss, Thai, Singapore u.a.), deutsch und englisch.
 - Feld für Feld übernehmen: jedes erkannte Feld lässt sich abwählen oder korrigieren; Reise wird anhand des Datums vorgeschlagen.

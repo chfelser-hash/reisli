@@ -14,14 +14,14 @@ export async function importDialog(shared = null) {
   const err = h('p', { class: 'form-error' });
   const info = h('p', { class: 'muted small' });
   const text = h('textarea', { rows: 7, placeholder: 'Text der Bestätigung hier einfügen (in der Mail alles markieren, kopieren, einfügen) …' });
-  const file = h('input', { type: 'file', class: 'file-input', accept: '.eml,.pdf,.txt,.html,.htm,message/rfc822,application/pdf,text/plain,text/html', onchange: async (e) => {
+  const file = h('input', { type: 'file', class: 'file-input', accept: '.eml,.msg,.pdf,.txt,.html,.htm,message/rfc822,application/vnd.ms-outlook,application/pdf,text/plain,text/html', onchange: async (e) => {
     const f = e.target.files[0];
     if (!f) return;
     picked = { name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) };
     info.textContent = `Datei: ${f.name} (${Math.max(1, Math.round(f.size / 1024))} KB)`;
   } });
   const drop = h('label', { class: 'drop-zone' },
-    h('strong', null, 'Datei wählen'), h('span', { class: 'muted small' }, ' oder hierher ziehen: E-Mail (.eml), PDF, HTML, Text'), file);
+    h('strong', null, 'Datei wählen'), h('span', { class: 'muted small' }, ' oder hierher ziehen: E-Mail (.eml, Outlook .msg), PDF, HTML, Text'), file);
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', async (e) => {
@@ -42,7 +42,7 @@ export async function importDialog(shared = null) {
       h('ul', { class: 'small' },
         h('li', null, h('strong', null, 'Handy: '), 'In der Mail-App den Text markieren und kopieren, hier einfügen. Oder das PDF (E-Ticket) über «Teilen → Reisli» schicken.'),
         h('li', null, h('strong', null, 'Gmail im Browser: '), '⋮ → «Original herunterladen» → .eml-Datei hier wählen.'),
-        h('li', null, h('strong', null, 'Outlook: '), 'Mail in einen Ordner ziehen speichert .msg (nicht lesbar) – besser «Speichern unter → .eml» oder Text kopieren.'))),
+        h('li', null, h('strong', null, 'Outlook: '), 'Mail auf den Desktop ziehen (.msg) und hier wählen oder hineinziehen.'))),
     err
   );
   const res = await modal('Buchung importieren', content, [
@@ -185,7 +185,7 @@ function reviewContent(r, tripId, setTrip) {
   const cur = (v) => (ex ? v : undefined);
   if (ex) out.push(h('p', { class: 'small' }, `Bekannte Buchung: «${ex.title}» wird aktualisiert. Geänderte Werte sind vorausgewählt.`));
   const detail = [f.checkInTime ? `Check-in ab ${f.checkInTime}` : '', f.checkOutTime ? `Check-out bis ${f.checkOutTime}` : ''].filter(Boolean).join(' · ');
-  const notes = [f.pin ? `PIN ${f.pin}` : '', f.guests ? `${f.guests} Personen` : '', f.rooms ? `${f.rooms} Zimmer` : ''].filter(Boolean).join(' · ');
+  const notes = [f.pin ? `PIN ${f.pin}` : '', f.guests ? `${f.guests} Personen` : '', f.rooms ? `${f.rooms} Zimmer` : '', f.nonRefundable ? 'nicht kostenlos stornierbar' : ''].filter(Boolean).join(' · ');
   out.push(h('table', { class: 'import-table' }, h('tbody', null,
     row('title', 'Name', f.name || '', cur(ex?.title)),
     row('date', 'Check-in', f.checkIn || '', cur(ex?.date), { input: h('input', { type: 'date', value: f.checkIn || '', 'data-val': 'date' }) }),
@@ -208,10 +208,11 @@ function paymentRow(f, S, ex) {
   const methods = S.methods.filter((m) => !isCashMethod(m));
   const sel = h('select', { 'data-val': 'payment' },
     h('option', { value: 'bezahlt', selected: f.payment === 'bezahlt' }, 'bereits bezahlt – Zahlung erfassen'),
+    h('option', { value: 'teilweise', selected: f.payment === 'teilweise' }, `teilweise bezahlt${f.paidAmount ? ` (${fmtCur(f.paidAmount, f.price?.currency)})` : ''} – Rest vor Ort`),
     h('option', { value: 'vorort', selected: f.payment === 'vorort' }, 'reserviert – Zahlung vor Ort'),
     h('option', { value: 'offen', selected: !f.payment }, 'noch offen – vorgängig zahlen'));
   const meth = h('select', { 'data-val': 'method' }, h('option', { value: '' }, 'Bezahlt mit …'), methods.map((m) => h('option', { value: m.id }, m.name)));
-  const upd = () => (meth.hidden = sel.value !== 'bezahlt');
+  const upd = () => (meth.hidden = sel.value !== 'bezahlt' && sel.value !== 'teilweise');
   sel.addEventListener('change', upd);
   upd();
   return row('payment', 'Bezahlung', f.payment || 'offen', ex ? (ex.payments?.length ? 'Zahlung erfasst' : ex.payWhere === 'vorort' ? 'vor Ort' : 'offen') : undefined, { input: h('div', { class: 'row gap wrap' }, sel, meth), checked: !ex || !ex.payments?.length });
@@ -258,8 +259,9 @@ async function apply(r, tripId, body, beleg) {
   };
   const payment = (price) => {
     const pay = valOf(body, 'payment');
-    if (pay !== 'bezahlt' || !price) return null;
-    return { id: newId(), date: todayStr(), amount: price.amount, currency: price.currency, chf: price.currency === 'CHF' ? price.amount : null, methodId: body.querySelector('[data-val="method"]')?.value || '', paidBy: '', note: 'laut Buchungsbestätigung' };
+    if ((pay !== 'bezahlt' && pay !== 'teilweise') || !price) return null;
+    const amount = pay === 'teilweise' && r.fields.paidAmount ? r.fields.paidAmount : price.amount;
+    return { id: newId(), date: todayStr(), amount, currency: price.currency, chf: price.currency === 'CHF' ? amount : null, methodId: body.querySelector('[data-val="method"]')?.value || '', paidBy: '', note: 'laut Buchungsbestätigung' };
   };
 
   // Stornierung
@@ -321,8 +323,9 @@ async function apply(r, tripId, body, beleg) {
   if (price) item.plan = price;
   const pay = valOf(body, 'payment');
   if (pay !== undefined) {
-    item.payWhere = pay === 'vorort' ? 'vorort' : 'vorgaengig';
-    item.reserved = pay !== 'bezahlt';
+    // teilweise bezahlt (z.B. Kurtaxe direkt an die Unterkunft): Rest vor Ort
+    item.payWhere = pay === 'vorort' || pay === 'teilweise' ? 'vorort' : 'vorgaengig';
+    item.reserved = pay !== 'bezahlt' && pay !== 'teilweise';
     const p = payment(item.plan);
     if (p && !(item.payments || []).length) item.payments = [p];
   }

@@ -117,6 +117,107 @@ export function parseEml(raw) {
   return out;
 }
 
+// ---------- Outlook (.msg, «Compound File») ----------
+/** Liest die Datei-Struktur einer .msg (CFB) → Map Pfad → Bytes */
+function readCfb(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = (o) => dv.getUint16(o, true);
+  const u32 = (o) => dv.getUint32(o, true);
+  if (u32(0) !== 0xe011cfd0 || u32(4) !== 0xe11ab1a1) throw new Error('Keine Outlook-Datei');
+  const secSize = 1 << u16(0x1e);
+  const miniSize = 1 << u16(0x20);
+  const cutoff = u32(0x38);
+  const off = (n) => (n + 1) * secSize;
+  // FAT-Sektoren aus der DIFAT
+  const fatSecs = [];
+  for (let i = 0; i < 109; i++) { const v = u32(0x4c + i * 4); if (v < 0xfffffffa) fatSecs.push(v); }
+  let difat = u32(0x44);
+  for (let k = 0; difat < 0xfffffffa && k < 1000; k++) {
+    const per = secSize / 4 - 1;
+    for (let i = 0; i < per; i++) { const v = u32(off(difat) + i * 4); if (v < 0xfffffffa) fatSecs.push(v); }
+    difat = u32(off(difat) + per * 4);
+  }
+  const fat = [];
+  for (const sct of fatSecs) for (let i = 0; i < secSize / 4; i++) fat.push(u32(off(sct) + i * 4));
+  const chain = (start, table) => {
+    const out = [];
+    for (let s2 = start, k = 0; s2 < 0xfffffffa && k < 1e6; k++) { out.push(s2); s2 = table[s2]; }
+    return out;
+  };
+  const readChain = (start, size) => {
+    const out = new Uint8Array(size);
+    let o = 0;
+    for (const sct of chain(start, fat)) {
+      const n = Math.min(secSize, size - o);
+      if (n <= 0) break;
+      out.set(bytes.subarray(off(sct), off(sct) + n), o);
+      o += n;
+    }
+    return out;
+  };
+  // Verzeichnis
+  const dirSecs = chain(u32(0x30), fat);
+  const dir = [];
+  for (const sct of dirSecs) for (let i = 0; i < secSize / 128; i++) {
+    const b = off(sct) + i * 128;
+    const len = u16(b + 64);
+    let name = '';
+    for (let c = 0; c < Math.max(0, len / 2 - 1); c++) name += String.fromCharCode(u16(b + c * 2));
+    dir.push({ name, type: bytes[b + 66], left: u32(b + 68), right: u32(b + 72), child: u32(b + 76), start: u32(b + 116), size: u32(b + 120) });
+  }
+  const root = dir[0];
+  const miniStream = readChain(root.start, root.size);
+  const miniFat = [];
+  for (const sct of chain(u32(0x3c), fat)) for (let i = 0; i < secSize / 4; i++) miniFat.push(u32(off(sct) + i * 4));
+  const readMini = (start, size) => {
+    const out = new Uint8Array(size);
+    let o = 0;
+    for (const sct of chain(start, miniFat)) {
+      const n = Math.min(miniSize, size - o);
+      if (n <= 0) break;
+      out.set(miniStream.subarray(sct * miniSize, sct * miniSize + n), o);
+      o += n;
+    }
+    return out;
+  };
+  const files = new Map();
+  const walk = (idx, prefix, depth) => {
+    if (idx >= dir.length || idx === 0xffffffff || depth > 50) return;
+    const e = dir[idx];
+    walk(e.left, prefix, depth + 1);
+    walk(e.right, prefix, depth + 1);
+    const path = prefix + e.name;
+    if (e.type === 2) files.set(path, e.size < cutoff ? readMini(e.start, e.size) : readChain(e.start, e.size));
+    else if (e.type === 1) walk(e.child, path + '/', depth + 1);
+  };
+  walk(root.child, '', 0);
+  return files;
+}
+
+/** Outlook-Nachricht (.msg) → wie parseEml */
+export function parseMsg(bytes) {
+  const files = readCfb(bytes);
+  const prop = (prefix, id) => {
+    const u = files.get(`${prefix}__substg1.0_${id}001F`);
+    if (u) return new TextDecoder('utf-16le').decode(u).replace(/\0+$/, '');
+    const a = files.get(`${prefix}__substg1.0_${id}001E`);
+    if (a) return decodeBytes(a, 'windows-1252').replace(/\0+$/, '');
+    return '';
+  };
+  const out = { subject: prop('', '0037'), from: prop('', '0C1F') || prop('', '0042'), text: prop('', '1000'), html: '', attachments: [] };
+  const html = files.get('__substg1.0_10130102');
+  if (html) out.html = decodeBytes(html, (latin1(html.slice(0, 2000)).match(/charset=["']?([\w-]+)/i) || [])[1] || 'utf-8');
+  else out.html = prop('', '1013');
+  const atts = new Set([...files.keys()].filter((k) => k.startsWith('__attach_version1.0_')).map((k) => k.split('/')[0]));
+  for (const a of atts) {
+    const data = files.get(`${a}/__substg1.0_37010102`);
+    if (!data) continue;
+    const name = prop(a + '/', '3707') || prop(a + '/', '3704') || 'anhang';
+    out.attachments.push({ name, type: prop(a + '/', '370E') || (/\.pdf$/i.test(name) ? 'application/pdf' : 'application/octet-stream'), bytes: data });
+  }
+  return out;
+}
+
 // ---------- PDF (einfacher Textauszug) ----------
 async function inflate(bytes) {
   if (typeof DecompressionStream === 'undefined') throw new Error('Entpacken nicht möglich');
@@ -153,52 +254,319 @@ function ascii85(bytes) {
 }
 const asciiHex = (bytes) => { const h = latin1(bytes).replace(/[^0-9a-f]/gi, ''); const o = new Uint8Array(h.length >> 1); for (let i = 0; i < o.length; i++) o[i] = parseInt(h.substr(i * 2, 2), 16); return o; };
 
-/** Text aus Seiteninhalten (Tj/TJ); klappt bei «normalen» PDFs, nicht bei eingebetteten Spezialschriften */
+/**
+ * Text aus einem PDF: Seiten mit ihren Schriften (inkl. ToUnicode-Tabellen für eingebettete Schriften,
+ * wie sie Chrome/Edge «Als PDF speichern» und viele Buchungsportale erzeugen), Zeilen nach Position sortiert.
+ */
 export async function pdfToText(bytes) {
   const raw = latin1(bytes);
-  const parts = [];
-  const re = />>\s*stream\r?\n/g;
-  let m;
-  while ((m = re.exec(raw))) {
-    const start = m.index + m[0].length;
-    const end = raw.indexOf('endstream', start);
-    if (end < 0) break;
-    const dict = raw.slice(Math.max(raw.lastIndexOf(' obj', m.index), 0), m.index + 2);
+  // ----- Objekte einlesen (inkl. komprimierter Objekt-Streams) -----
+  const objs = new Map();
+  const decode = async (dict, data) => {
     const filters = [...((dict.match(/\/Filter\s*(\[[^\]]*\]|\/\w+)/) || [])[1] || '').matchAll(/\/(\w+)/g)].map((x) => x[1]);
-    let data = bytes.slice(start, end);
-    try {
-      for (const f of filters) {
-        if (f === 'FlateDecode' || f === 'Fl') data = await inflate(data);
-        else if (f === 'ASCII85Decode' || f === 'A85') data = ascii85(data);
-        else if (f === 'ASCIIHexDecode' || f === 'AHx') data = asciiHex(data);
-        else throw new Error('Filter ' + f);
-      }
-    } catch { continue; }
-    const s = latin1(data);
-    if (!/T[Jj]/.test(s)) continue;
-    let line = '';
-    const lines = [];
-    const tok = /\((?:\\.|[^\\)])*\)\s*Tj|\[((?:\((?:\\.|[^\\)])*\)|[^\]])*)\]\s*TJ|T\*|-?[\d.]+\s+-?[\d.]+\s+T[dD]|\((?:\\.|[^\\)])*\)\s*'|ET/g;
-    let t;
-    while ((t = tok.exec(s))) {
-      const x = t[0];
-      if (x.endsWith('Tj') || x.endsWith("'")) {
-        if (x.endsWith("'")) { lines.push(line); line = ''; }
-        line += pdfString(x.slice(x.indexOf('(') + 1, x.lastIndexOf(')')));
-      } else if (x.endsWith('TJ')) {
-        for (const p of (t[1] || '').matchAll(/\(((?:\\.|[^\\)])*)\)|(-?[\d.]+)/g)) {
-          if (p[1] !== undefined) line += pdfString(p[1]);
-          else if (Number(p[2]) < -200) line += ' ';
-        }
-      } else if (/T[dD]$/.test(x)) {
-        const dy = Number(x.trim().split(/\s+/)[1]);
-        if (dy !== 0) { lines.push(line); line = ''; } else line += ' ';
-      } else { lines.push(line); line = ''; }
+    for (const f of filters) {
+      if (f === 'FlateDecode' || f === 'Fl') data = await inflate(data);
+      else if (f === 'ASCII85Decode' || f === 'A85') data = ascii85(data);
+      else if (f === 'ASCIIHexDecode' || f === 'AHx') data = asciiHex(data);
+      else throw new Error('Filter ' + f);
     }
-    lines.push(line);
-    parts.push(lines.map((l) => l.trim()).filter(Boolean).join('\n'));
+    return data;
+  };
+  const head = /(\d+)\s+(\d+)\s+obj\b/g;
+  let m;
+  while ((m = head.exec(raw))) {
+    const num = Number(m[1]);
+    const bodyStart = m.index + m[0].length;
+    const endobj = raw.indexOf('endobj', bodyStart);
+    if (endobj < 0) break;
+    let body = raw.slice(bodyStart, endobj);
+    const st = body.match(/>>\s*stream\r?\n/);
+    if (st) {
+      const dict = body.slice(0, st.index + 2);
+      const dataStart = bodyStart + st.index + st[0].length;
+      const len = Number((dict.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/) || [])[1]);
+      let dataEnd = Number.isFinite(len) && raw.startsWith('endstream', raw.slice(dataStart + len, dataStart + len + 12).search(/endstream/) + dataStart + len) ? dataStart + len : raw.indexOf('endstream', dataStart);
+      if (dataEnd < 0) dataEnd = endobj;
+      let data = null;
+      try { data = await decode(dict, bytes.subarray(dataStart, dataEnd)); } catch { /* unbekannter Filter */ }
+      objs.set(num, { dict, data });
+      const after = raw.indexOf('endobj', dataEnd);
+      head.lastIndex = after > 0 ? after : endobj;
+      if (data && /\/Type\s*\/ObjStm/.test(dict)) {
+        const s = latin1(data);
+        const first = Number((dict.match(/\/First\s+(\d+)/) || [])[1]);
+        const nums = s.slice(0, first).trim().split(/\s+/).map(Number);
+        for (let i = 0; i < nums.length; i += 2) {
+          const a = first + nums[i + 1];
+          const b = i + 3 < nums.length ? first + nums[i + 3] : s.length;
+          if (!objs.has(nums[i])) objs.set(nums[i], { dict: s.slice(a, b), data: null });
+        }
+      }
+    } else objs.set(num, { dict: body, data: null });
   }
-  return parts.join('\n').trim();
+  const ref = (s) => { const r = String(s || '').match(/^\s*(\d+)\s+\d+\s+R/); return r ? objs.get(Number(r[1])) : null; };
+  const valueOf = (dict, key) => {
+    const i = dict.search(new RegExp('/' + key + '(?![\\w])'));
+    if (i < 0) return null;
+    const rest = dict.slice(i + key.length + 1).trimStart();
+    if (rest.startsWith('<<')) { // verschachteltes Dictionary
+      let depth = 0, k = 0;
+      for (; k < rest.length; k++) {
+        if (rest.startsWith('<<', k)) { depth++; k++; } else if (rest.startsWith('>>', k)) { depth--; k++; if (!depth) break; }
+      }
+      return rest.slice(0, k + 1);
+    }
+    if (rest.startsWith('[')) return rest.slice(0, rest.indexOf(']') + 1);
+    const r = rest.match(/^(\d+\s+\d+\s+R|\/\w+|[\d.]+)/);
+    return r ? r[1] : null;
+  };
+  const resolve = (v) => (v && /^\d+\s+\d+\s+R/.test(v) ? ref(v)?.dict || '' : v || '');
+
+  // ----- ToUnicode-Tabellen -----
+  const cmapCache = new Map();
+  const parseCMap = (data) => {
+    const s = latin1(data);
+    const map = new Map();
+    let width = 1;
+    const cs = s.match(/begincodespacerange\s*<([0-9a-f]+)>/i);
+    if (cs) width = cs[1].length / 2;
+    const u16 = (hex) => { let out = ''; for (let i = 0; i + 3 < hex.length + 0; i += 4) out += String.fromCharCode(parseInt(hex.substr(i, 4), 16)); return out || String.fromCharCode(parseInt(hex, 16)); };
+    for (const block of s.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
+      for (const p of block[1].matchAll(/<([0-9a-f]+)>\s*<([0-9a-f]*)>/gi)) map.set(parseInt(p[1], 16), u16(p[2]));
+    }
+    for (const block of s.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
+      for (const p of block[1].matchAll(/<([0-9a-f]+)>\s*<([0-9a-f]+)>\s*(<([0-9a-f]+)>|\[([^\]]*)\])/gi)) {
+        const a = parseInt(p[1], 16), b = parseInt(p[2], 16);
+        if (p[4] !== undefined) {
+          const base = p[4];
+          const start = parseInt(base.slice(-4), 16);
+          const prefix = base.length > 4 ? u16(base.slice(0, -4)) : '';
+          for (let c = a; c <= b && c - a < 65536; c++) map.set(c, prefix + String.fromCharCode(start + (c - a)));
+        } else {
+          const list = [...p[5].matchAll(/<([0-9a-f]+)>/gi)].map((x) => u16(x[1]));
+          for (let c = a; c <= b; c++) map.set(c, list[c - a] ?? '');
+        }
+      }
+    }
+    return { map, width };
+  };
+  // Zeichenbreiten (für Abstände zwischen Textstücken): /W bei CID-Schriften, /Widths bei einfachen
+  const nums = (v) => (resolve(v).match(/[-\d.]+|\[|\]/g) || []);
+  const widthsOf = (fontDict) => {
+    const desc = valueOf(fontDict, 'DescendantFonts');
+    if (desc) {
+      const dref = resolve(desc).match(/(\d+)\s+\d+\s+R/);
+      const dd = dref ? objs.get(Number(dref[1]))?.dict || '' : resolve(desc);
+      const dw = Number(valueOf(dd, 'DW')) || 1000;
+      const w = new Map();
+      const t = nums(valueOf(dd, 'W'));
+      for (let k = 1; k < t.length - 1;) { // erstes Token ist «[»
+        const c = Number(t[k]);
+        if (t[k + 1] === '[') {
+          let j = k + 2, cc = c;
+          while (j < t.length && t[j] !== ']') w.set(cc++, Number(t[j++]));
+          k = j + 1;
+        } else if (t[k] === ']') break;
+        else { const c2 = Number(t[k + 1]), ww = Number(t[k + 2]); for (let cc = c; cc <= c2 && cc - c < 65536; cc++) w.set(cc, ww); k += 3; }
+      }
+      return (code) => w.get(code) ?? dw;
+    }
+    const first = Number(valueOf(fontDict, 'FirstChar')) || 0;
+    const list = nums(valueOf(fontDict, 'Widths')).filter((x) => x !== '[' && x !== ']').map(Number);
+    return (code) => list[code - first] ?? 500;
+  };
+  const fontOf = (fontDict) => {
+    if (cmapCache.has(fontDict)) return cmapCache.get(fontDict);
+    const tu = valueOf(fontDict, 'ToUnicode');
+    const o = tu ? ref(tu) : null;
+    const f = o?.data ? parseCMap(o.data) : { map: null, width: /Identity-H|Type0/.test(fontDict) ? 2 : 1 };
+    f.w = widthsOf(fontDict);
+    cmapCache.set(fontDict, f);
+    return f;
+  };
+  const fontsOf = (resDict) => {
+    const out = {};
+    const fd = resolve(valueOf(resDict, 'Font'));
+    for (const p of fd.matchAll(/\/([\w.+-]+)\s+(\d+)\s+\d+\s+R/g)) out[p[1]] = objs.get(Number(p[2]))?.dict || '';
+    return out;
+  };
+  const xobjectsOf = (resDict) => {
+    const out = {};
+    const xd = resolve(valueOf(resDict, 'XObject'));
+    for (const p of xd.matchAll(/\/([\w.+-]+)\s+(\d+)\s+\d+\s+R/g)) out[p[1]] = objs.get(Number(p[2]));
+    return out;
+  };
+
+  // ----- Inhalte ausführen: Text mit Position sammeln -----
+  const mul = (m1, m2) => [m1[0] * m2[0] + m1[1] * m2[2], m1[0] * m2[1] + m1[1] * m2[3], m1[2] * m2[0] + m1[3] * m2[2], m1[2] * m2[1] + m1[3] * m2[3], m1[4] * m2[0] + m1[5] * m2[2] + m2[4], m1[4] * m2[1] + m1[5] * m2[3] + m2[5]];
+  /** → {text, w} mit w = Breite in 1/1000 der Schriftgrösse */
+  const decodeStr = (font, bytesStr) => {
+    const f = font || { map: null, width: 1, w: () => 500 };
+    let out = '', w = 0;
+    for (let i = 0; i < bytesStr.length; i += f.width) {
+      let code = 0;
+      for (let k = 0; k < f.width; k++) code = code * 256 + (bytesStr.charCodeAt(i + k) || 0);
+      out += f.map ? f.map.get(code) ?? '' : f.width === 1 ? String.fromCharCode(code) : '';
+      w += f.w ? f.w(code) : 500;
+    }
+    return { text: out, w };
+  };
+  const runs = [];
+  let seq = 0;
+  const exec = (content, res, ctm0, depth) => {
+    if (depth > 4) return;
+    const fonts = fontsOf(res);
+    const xobjs = xobjectsOf(res);
+    let ctm = ctm0, stack = [], tm = [1, 0, 0, 1, 0, 0], tlm = tm, font = null, size = 10, leading = 0;
+    const ops = [];
+    // Text ausgeben und die Textposition um seine Breite weiterschieben
+    const emit = (text, w1000) => {
+      const adv = (w1000 / 1000) * size;
+      const p = mul(tm, ctm);
+      if (text) runs.push({ x: p[4], y: p[5], size: Math.abs(size * (p[3] || p[0] || 1)), adv: adv * Math.hypot(p[0], p[1]), text, seq: seq++ });
+      tm = mul([1, 0, 0, 1, adv, 0], tm);
+    };
+    const s = content;
+    let i = 0;
+    const isWs = (c) => c === ' ' || c === '\n' || c === '\r' || c === '\t' || c === '\f' || c === '\0';
+    const readLiteral = () => {
+      let depthP = 1, out = '';
+      i++;
+      while (i < s.length && depthP > 0) {
+        const c = s[i];
+        if (c === '\\') {
+          const n = s[i + 1];
+          const map = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', '(': '(', ')': ')', '\\': '\\' };
+          if (map[n] !== undefined) { out += map[n]; i += 2; continue; }
+          if (/[0-7]/.test(n)) { const o = s.slice(i + 1, i + 4).match(/^[0-7]{1,3}/)[0]; out += String.fromCharCode(parseInt(o, 8)); i += 1 + o.length; continue; }
+          if (n === '\r' || n === '\n') { i += n === '\r' && s[i + 2] === '\n' ? 3 : 2; continue; }
+          i++;
+          continue;
+        }
+        if (c === '(') depthP++;
+        else if (c === ')') { depthP--; if (!depthP) { i++; break; } }
+        out += c;
+        i++;
+      }
+      return { str: out };
+    };
+    const readHex = () => {
+      const end = s.indexOf('>', i);
+      let h = s.slice(i + 1, end).replace(/\s/g, '');
+      if (h.length % 2) h += '0';
+      let out = '';
+      for (let k = 0; k < h.length; k += 2) out += String.fromCharCode(parseInt(h.substr(k, 2), 16));
+      i = end + 1;
+      return { str: out };
+    };
+    const stackArr = [];
+    let arr = null;
+    while (i < s.length) {
+      const c = s[i];
+      if (isWs(c)) { i++; continue; }
+      if (c === '%') { while (i < s.length && s[i] !== '\n' && s[i] !== '\r') i++; continue; }
+      let tok;
+      if (c === '(') tok = readLiteral();
+      else if (c === '<' && s[i + 1] !== '<') tok = readHex();
+      else if (c === '<' && s[i + 1] === '<') { const e = s.indexOf('>>', i); i = e < 0 ? s.length : e + 2; continue; }
+      else if (c === '[') { arr = []; i++; continue; }
+      else if (c === ']') { tok = { arr }; arr = null; i++; }
+      else {
+        let j = i;
+        if (c === '/') j++;
+        while (j < s.length && !isWs(s[j]) && !'()<>[]{}/%'.includes(s[j])) j++;
+        const w = s.slice(i, j || i + 1);
+        i = j > i ? j : i + 1;
+        tok = /^[-+]?(\d+\.?\d*|\.\d+)$/.test(w) ? { num: Number(w) } : w.startsWith('/') ? { name: w.slice(1) } : { op: w };
+      }
+      if (arr && !tok.op && tok.arr === undefined) { arr.push(tok); continue; }
+      if (!tok.op) { stackArr.push(tok); continue; }
+      const a = stackArr.splice(0);
+      const n = (k) => a[a.length - k]?.num ?? 0;
+      switch (tok.op) {
+        case 'q': stack.push(ctm); break;
+        case 'Q': ctm = stack.pop() || ctm0; break;
+        case 'cm': ctm = mul([n(6), n(5), n(4), n(3), n(2), n(1)], ctm); break;
+        case 'BT': tm = tlm = [1, 0, 0, 1, 0, 0]; break;
+        case 'Tf': font = fontOf(fonts[a[0]?.name] || ''); size = n(1) || size; break;
+        case 'TL': leading = n(1); break;
+        case 'Tm': tm = tlm = [n(6), n(5), n(4), n(3), n(2), n(1)]; break;
+        case 'Td': tm = tlm = mul([1, 0, 0, 1, n(2), n(1)], tlm); break;
+        case 'TD': leading = -n(1); tm = tlm = mul([1, 0, 0, 1, n(2), n(1)], tlm); break;
+        case 'T*': tm = tlm = mul([1, 0, 0, 1, 0, -leading], tlm); break;
+        case 'Tj': { const d = decodeStr(font, a[0]?.str || ''); emit(d.text, d.w); break; }
+        case "'": { tm = tlm = mul([1, 0, 0, 1, 0, -leading], tlm); const d = decodeStr(font, a[0]?.str || ''); emit(d.text, d.w); break; }
+        case '"': { tm = tlm = mul([1, 0, 0, 1, 0, -leading], tlm); const d = decodeStr(font, a[2]?.str || ''); emit(d.text, d.w); break; }
+        case 'TJ': {
+          let t = '', w = 0;
+          for (const x of a[0]?.arr || []) {
+            if (x.str !== undefined) { const d = decodeStr(font, x.str); t += d.text; w += d.w; }
+            else if (x.num !== undefined) { if (x.num < -200) t += ' '; w -= x.num; }
+          }
+          emit(t, w);
+          break;
+        }
+        case 'Do': {
+          const xo = xobjs[a[0]?.name];
+          if (xo?.data && /\/Subtype\s*\/Form/.test(xo.dict)) {
+            const mat = (valueOf(xo.dict, 'Matrix') || '').match(/[-\d.]+/g)?.map(Number);
+            const res2 = resolve(valueOf(xo.dict, 'Resources')) || res;
+            exec(latin1(xo.data), res2, mat?.length === 6 ? mul(mat, ctm) : ctm, depth + 1);
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+  };
+
+  // Seiten in Dokumentreihenfolge
+  const pages = [...objs.entries()].filter(([, o]) => /\/Type\s*\/Page(?!s)/.test(o.dict)).sort((a, b) => a[0] - b[0]);
+  const pageTexts = [];
+  for (const [, page] of pages) {
+    runs.length = 0;
+    let res = resolve(valueOf(page.dict, 'Resources'));
+    if (!res) { // geerbt vom /Pages-Knoten
+      const parent = ref(valueOf(page.dict, 'Parent'));
+      res = parent ? resolve(valueOf(parent.dict, 'Resources')) : '';
+    }
+    const cv = valueOf(page.dict, 'Contents') || '';
+    const refs = [...cv.matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => objs.get(Number(x[1])));
+    // Contents als indirektes Array
+    if (refs.length === 1 && !refs[0]?.data && /\[/.test(refs[0]?.dict || '')) refs.splice(0, 1, ...[...refs[0].dict.matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => objs.get(Number(x[1]))));
+    const content = refs.map((o) => (o?.data ? latin1(o.data) : '')).join('\n');
+    exec(content, res, [1, 0, 0, 1, 0, 0], 0);
+    // Zeilen: gleiche Höhe (± halbe Schriftgrösse) zusammen, von oben nach unten, links nach rechts
+    const sorted = [...runs].sort((p, q) => q.y - p.y || p.x - q.x || p.seq - q.seq);
+    const lines = [];
+    for (const r of sorted) {
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(last.y - r.y) <= Math.max(2, Math.min(r.size, last.size) * 0.5)) last.runs.push(r);
+      else lines.push({ y: r.y, size: r.size, runs: [r] });
+    }
+    // Stücke einer Zeile: direkt anhängen, wenn sie aneinanderstossen (Unterschneidung), sonst mit Abstand
+    pageTexts.push(lines.map((l) => {
+      let out = '', prev = null;
+      for (const r of l.runs.sort((p, q) => p.x - q.x || p.seq - q.seq)) {
+        if (prev) out += r.x - (prev.x + prev.adv) > Math.min(r.size, prev.size) * 0.2 ? ' ' : '';
+        out += r.text;
+        prev = r;
+      }
+      return out.replace(/\s+/g, ' ').trim();
+    }).filter(Boolean).join('\n'));
+  }
+  return pageTexts.join('\n\n').trim();
+}
+
+/** Mail (eml/msg) → Quelle: lesbarster Text (Text- oder HTML-Teil) plus Text von PDF-Anhängen */
+async function mailToSource(mail, kind) {
+  const fromHtml = mail.html ? htmlToText(mail.html) : '';
+  let text = mail.text && mail.text.length >= fromHtml.length * 0.5 ? mail.text : fromHtml || mail.text;
+  for (const a of mail.attachments) if (/pdf/.test(a.type) || /\.pdf$/i.test(a.name)) {
+    const t = await pdfToText(a.bytes).catch(() => '');
+    if (t) text += '\n\n' + t;
+  }
+  return { subject: mail.subject, from: mail.from, text, attachments: mail.attachments, kind };
 }
 
 /**
@@ -214,17 +582,10 @@ export async function readSource(src) {
     const text = await pdfToText(bytes).catch(() => '');
     return { subject: '', from: '', text, attachments: [], kind: 'pdf', unreadable: text.length < 30 };
   }
+  if (bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) return mailToSource(parseMsg(bytes), 'msg');
   const str = decodeBytes(bytes);
   if (name.endsWith('.eml') || /^(received|from|return-path|delivered-to|mime-version|subject|date|message-id):/im.test(head.split(/\r?\n\r?\n/)[0] || '')) {
-    const mail = parseEml(str);
-    let text = mail.text.trim() && mail.text.length > 200 ? mail.text : mail.html ? htmlToText(mail.html) : mail.text;
-    if (mail.html && mail.text) text = mail.text.length >= htmlToText(mail.html).length * 0.5 ? mail.text : htmlToText(mail.html);
-    // Text von PDF-Anhängen (z.B. E-Ticket) anhängen
-    for (const a of mail.attachments) if (/pdf/.test(a.type) || /\.pdf$/i.test(a.name)) {
-      const t = await pdfToText(a.bytes).catch(() => '');
-      if (t) text += '\n\n' + t;
-    }
-    return { subject: mail.subject, from: mail.from, text, attachments: mail.attachments, kind: 'eml' };
+    return mailToSource(parseEml(str), 'eml');
   }
   if (name.endsWith('.html') || name.endsWith('.htm') || /<html|<body|<table/i.test(head)) return { subject: '', from: '', text: htmlToText(str), attachments: [], kind: 'html' };
   return { subject: '', from: '', text: str, attachments: [], kind: 'text' };
@@ -316,7 +677,8 @@ export function findMoney(text) {
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Wert hinter einer Beschriftung: «Label: Wert» in derselben Zeile, sonst die nächste nicht leere Zeile */
 function labelValue(lines, labels, { maxNext = 2, test } = {}) {
-  const re = new RegExp(`^\\s*(?:[•*\\-]\\s*)?(?:${labels.map(esc).join('|')})\\b\\s*[:：]?\\s*(.*)$`, 'i');
+  const sorted = [...labels].sort((a, b) => b.length - a.length);
+  const re = new RegExp(`^\\s*(?:[•*\\-]\\s*)?(?:${sorted.map(esc).join('|')})\\b\\s*[:：]?\\s*(.*)$`, 'i');
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(re);
     if (!m) continue;
@@ -370,15 +732,31 @@ const L = {
   checkOut: ['Check-out', 'Check out', 'Abreise', 'Abreisedatum', 'Departure', 'Departure date', 'Auschecken'],
   ref: ['Buchungsnummer', 'Bestätigungsnummer', 'Reservierungsnummer', 'Buchungs-ID', 'Buchungs-Nr', 'Buchungsnr', 'Booking number', 'Booking ID', 'Booking reference', 'Confirmation number', 'Confirmation code', 'Reservation number', 'Itinerary number', 'Reiseplannummer', 'Reservierungs-ID', 'Bestätigungscode', 'Buchungscode', 'Buchungsreferenz', 'Reservation code', 'Booking code'],
   pin: ['PIN-Code', 'PIN', 'Pin code'],
-  address: ['Adresse', 'Address', 'Anschrift', 'Standort', 'Location'],
+  address: ['Adresse der Unterkunft', 'Adresse des Hotels', 'Property address', 'Address of property', 'Hotel address', 'Adresse', 'Address', 'Anschrift', 'Standort', 'Lage', 'Location'],
   phone: ['Telefon', 'Telefonnummer', 'Tel', 'Phone', 'Phone number', 'Kontakt'],
   total: ['Gesamtpreis', 'Gesamtbetrag', 'Gesamtkosten', 'Gesamtsumme', 'Endpreis', 'Total price', 'Total amount', 'Total charged', 'Amount paid', 'Total cost', 'Grand total', 'Preis gesamt', 'Gesamt', 'Total', 'Betrag', 'Price', 'Preis', 'Summe', 'Amount'],
 };
-const PREPAID = /(bereits bezahlt|vollständig bezahlt|wurde belastet|wir haben .* belastet|zahlung erhalten|vorausbezahlt|jetzt bezahlt|bezahlt am|\bpaid in full\b|already paid|you(?:'|’)ve paid|you have paid|payment received|prepaid|charged to your card|has been charged|amount paid|total charged)/i;
+const PREPAID = /(insgesamt bezahlt|bezahlter betrag|wird mit booking\.com bezahlt|keine weitere zahlung nötig|bereits bezahlt|vollständig bezahlt|wurde belastet|wir haben .* belastet|zahlung erhalten|vorausbezahlt|jetzt bezahlt|bezahlt am|\bpaid in full\b|already paid|you(?:'|’)ve paid|you have paid|payment received|prepaid|charged to your card|has been charged|amount paid|total charged)/i;
 const AT_PROPERTY = /(zahlung in der unterkunft|zahlen in der unterkunft|bezahlen in der unterkunft|zahlen sie .* (vor ort|in der unterkunft|im hotel)|zahlung vor ort|bezahlung (?:vor ort|im hotel|in der unterkunft)|im hotel bezahlen|pay at (?:the )?(?:property|hotel)|pay(?:ment)? on arrival|you(?:'|’)ll pay (?:at|when)|you will pay (?:at|the property)|payment at (?:the )?(?:property|hotel)|pay later)/i;
 const CANCELLED = /(storniert|stornierung bestätigt|stornierungsbestätigung|wurde (?:erfolgreich )?storniert|cancell?ed|cancellation confirm|has been cancell?ed)/i;
 const MODIFIED = /(geändert|änderung|aktualisiert|modified|changed|updated|amended)/i;
+const NON_REFUNDABLE = /(nicht erstattungsfähig|nicht rückerstattbar|nicht kostenfrei stornierbar|nicht kostenlos stornierbar|nicht stornierbar|non-?refundable|not refundable|no free cancell?ation|cannot be cancell?ed)/i;
+const PAID_LABEL = /(insgesamt bezahlt|bezahlter betrag|bereits bezahlt|betrag bezahlt|amount paid|total paid|paid amount|you(?:'|’)ve paid|you paid)/i;
 const FREE_CANCEL = /(kostenlos(?:e)? (?:stornier\w*|storno)|kostenfrei(?:e)? stornier\w*|gebührenfrei\w* stornier\w*|free(?:ly)? cancell?ation|cancel for free|free cancel)[^\n]{0,80}/i;
+
+const ALL_LABELS = () => Object.values(L).flat();
+const isLabelLine = (v) => new RegExp(`^(?:${ALL_LABELS().map(esc).join('|')})\\b`, 'i').test(v);
+const GENERIC_TITLE = /(reservation|reservierung|buchung|booking|bestätigung|confirmation|voucher|beleg|receipt|prepaid|rechnung|invoice|itinerary|e-ticket|zahlungsbeleg|ihre angaben|details)/i;
+/** Bezahlter Betrag («Insgesamt bezahlt € …», «Am 6. Okt. bezahlter Betrag € …», «Amount paid …») */
+function paidAmount(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    if (!PAID_LABEL.test(lines[i])) continue;
+    const after = lines[i].slice(lines[i].search(PAID_LABEL));
+    const money = findMoney(after).concat(findMoney(lines[i + 1] || ''));
+    if (money.length) return { amount: money[0].amount, currency: money[0].currency };
+  }
+  return null;
+}
 
 function hotelName(subject, lines, provider) {
   // Betreff; fehlt er (eingefügter Text), die ersten Zeilen – dort steht meist «Ihre Buchung in X ist bestätigt»
@@ -424,6 +802,7 @@ function parseHotel(src, lines, all, provider, refYear) {
     const t = findTimes(lines.slice(co.line, co.line + 2).join(' '));
     if (t.length) f.checkOutTime = t[t.length > 1 ? 1 : 0];
   }
+  if (f.checkIn && f.checkOut && f.checkOut <= f.checkIn) delete f.checkOut; // Tabellenkopf «Check In  Check Out» mit Werten darunter
   // «12. – 15. Februar 2027» / «Feb 12 – Feb 15, 2027»
   if (!f.checkIn || !f.checkOut) {
     const dates = findDates(all, refYear).map((d) => d.date);
@@ -432,18 +811,45 @@ function parseHotel(src, lines, all, provider, refYear) {
     if (!f.checkOut && uniq.length >= 2) f.checkOut = uniq.find((d) => d > (f.checkIn || '')) || '';
   }
   if (f.checkIn && f.checkOut && f.checkOut <= f.checkIn) delete f.checkOut;
-  const ref = labelValue(lines, L.ref, { test: (v) => /[A-Z0-9]{4,}/i.test(v.replace(/[.\s-]/g, '')) });
-  if (ref) f.bookingRef = (ref.value.match(/[A-Z0-9][A-Z0-9.\-]{3,}[A-Z0-9]/i) || [ref.value])[0];
+  const ref = labelValue(lines, L.ref, { test: (v) => /\d/.test(v) && /[A-Z0-9][A-Z0-9.\-]{3,}[A-Z0-9]/i.test(v) });
+  if (ref) f.bookingRef = ref.value.match(/[A-Z0-9]*\d[A-Z0-9.\-]{2,}[A-Z0-9]|[A-Z0-9][A-Z0-9.\-]{2,}\d[A-Z0-9]*/i)?.[0] || ref.value;
   const pin = labelValue(lines, L.pin, { test: (v) => /\b\d{4,6}\b/.test(v) });
   if (pin) f.pin = pin.value.match(/\b\d{4,6}\b/)[0];
   const adr = labelValue(lines, L.address, { test: (v) => v.length > 6 && /\d|,/.test(v) && !/@/.test(v) });
-  if (adr) f.address = cleanVal(adr.value.replace(/\s*\[https?:[^\]]+\]/g, ''));
+  if (adr) {
+    // Mehrzeilige Adresse (z.B. «Strasse 19 / Rome, Italy / 00186») zusammensetzen
+    const parts = [adr.value];
+    for (let k = adr.line + 1; k < Math.min(lines.length, adr.line + 3); k++) {
+      const v = lines[k];
+      if (!v || v.length > 50 || /[:@]/.test(v) || isLabelLine(v) || firstDate(v, refYear) || findMoney(v).length) break;
+      parts.push(v);
+    }
+    f.address = cleanVal(parts.join(', ').replace(/\s*\[https?:[^\]]+\]/g, '').replace(/,\s*,/g, ','));
+  }
+  // Ohne Beschriftungen (z.B. Hotel-Voucher als PDF): Name = Zeile direkt vor der ersten Adresszeile oben
+  if (!f.name || !f.address) {
+    for (let k = 0; k < Math.min(lines.length - 1, 8); k++) {
+      const nm = lines[k], ad = lines[k + 1];
+      if (/\d/.test(ad) && /,/.test(ad) && ad.length < 120 && /^[\p{L}][\p{L}&'’ .-]{2,60}$/u.test(nm) && nm.split(' ').length <= 7 && !GENERIC_TITLE.test(nm)) {
+        if (!f.name) f.name = cleanVal(nm);
+        if (!f.address) f.address = cleanVal(ad);
+        break;
+      }
+    }
+  }
   const tel = labelValue(lines, L.phone, { test: (v) => /\+?\d[\d\s()\/-]{6,}/.test(v) });
   if (tel) f.phone = tel.value.match(/\+?\d[\d\s()\/-]{6,}\d/)[0].trim();
   f.price = totalPrice(lines, all);
-  f.payment = AT_PROPERTY.test(all) ? 'vorort' : PREPAID.test(all) ? 'bezahlt' : '';
+  const paid = paidAmount(lines);
+  if (paid) {
+    if (!f.price || f.price.guessed) f.price = { ...paid };
+    f.paidAmount = paid.amount;
+  }
+  f.payment = paid ? (f.price && paid.currency === f.price.currency && paid.amount < f.price.amount - 0.5 ? 'teilweise' : 'bezahlt')
+    : AT_PROPERTY.test(all) ? 'vorort' : PREPAID.test(all) ? 'bezahlt' : '';
+  if (NON_REFUNDABLE.test(all)) f.nonRefundable = true;
   const fc = all.match(FREE_CANCEL);
-  if (fc) {
+  if (fc && !/nicht\s*$|non-?\s*$|no\s*$/i.test(all.slice(Math.max(0, fc.index - 8), fc.index))) {
     const d = firstDate(fc[0], refYear);
     if (d) f.freeCancelUntil = d;
   }
@@ -525,7 +931,8 @@ function parseFlight(src, lines, all, provider, refYear) {
  */
 export function parseBooking(src, refYear = new Date().getFullYear()) {
   const text = String(src.text || '').replace(/\r/g, '').replace(/ /g, ' ');
-  const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim());
+  // Zeilen ohne eingebettete Links und Aufzählungszeichen – sonst stören sie die Beschriftungen
+  const lines = text.split('\n').map((l) => l.replace(/<(?:https?|mailto|tel):[^>]*>|\[(?:https?|mailto):[^\]]*\]/g, ' ').replace(/^[\s•*·-]+/, '').replace(/\s+/g, ' ').trim());
   const head = `${src.subject || ''}\n${src.from || ''}`;
   const all = `${head}\n${text}`;
   const provider = detectProvider(all);
@@ -540,7 +947,10 @@ export function parseBooking(src, refYear = new Date().getFullYear()) {
   const status = CANCELLED.test(head) || /\b(ihre buchung wurde storniert|your booking (?:has been|was|is) cancell?ed|reservation cancell?ed|stornierung bestätigt)/i.test(text) ? 'cancelled'
     : MODIFIED.test(src.subject || '') ? 'modified' : 'confirmed';
   const fields = kind === 'flight' ? parseFlight(src, lines, all, provider, refYear) : kind === 'hotel' ? parseHotel(src, lines, all, provider, refYear) : { price: totalPrice(lines, all) };
-  const link = (all.match(/https?:\/\/[^\s\]>"')]+/g) || []).find((u) => /(booking\.com|agoda|hotels\.com|expedia|trivago|airbnb|swiss\.com|flyedelweiss|thaiairways|singaporeair|manage|mybooking|reservation|confirmation|trip)/i.test(u));
+  // Link zur Buchung: zuerst «Buchung verwalten/Bestätigung», sonst eine Adresse des Anbieters (keine Tracking-Pixel)
+  const urls = (all.match(/https?:\/\/[^\s\]>"')]+/g) || []).filter((u) => !/(tracking_pixel|\.gif|\.png|unsubscribe|abmelden)/i.test(u));
+  const link = urls.find((u) => /(confirmation|myreservation|manage|mybooking|bn=|booking_id|itinerary|reservation)/i.test(u))
+    || urls.find((u) => /(booking\.com|agoda|hotels\.com|expedia|trivago|airbnb|swiss\.com|flyedelweiss|thaiairways|singaporeair)\/./i.test(u));
   if (link) fields.link = link.replace(/[.,;]+$/, '');
   const warnings = [];
   if (kind === 'unknown') warnings.push('Art der Buchung nicht erkannt – Felder bitte von Hand prüfen.');
