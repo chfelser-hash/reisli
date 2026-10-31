@@ -3,6 +3,7 @@ import { h, modal, toast, closeDialogOf } from '../ui.js';
 import { state, api, reload, settings, selectTrip, go } from '../app.js';
 import { fmt, fmtDate, fmtDay, fmtRange, tripSummary, todayStr, addDays, isDate, daysBetween } from '../calc.js';
 import { curSelect, ensureRate } from './shared.js';
+import { rangeCalendar } from './rangecal.js';
 
 /** mode: 'leer' | 'kopie' | 'excel'; sourceId: vorgewählte Reise für «kopie» */
 export function newTripDialog(mode = 'leer', sourceId = null) {
@@ -32,7 +33,10 @@ function emptyPane(anchor) {
   const today = todayStr();
   const d = { name: '', start: addDays(today, 30), end: addDays(today, 44), currency: 'CHF', travelers: 2 };
   const err = h('p', { class: 'form-error' });
-  const endInput = h('input', { type: 'date', value: d.end, required: true, onchange: (e) => (d.end = e.target.value) });
+  // Von–Bis wie in Flux: im Kalender ersten und letzten Tag antippen
+  const range = { from: d.start, to: d.end };
+  const busy = state.data.trips.filter((t) => !t.archived).map((t) => ({ from: t.start, to: t.end, name: t.name }));
+  const picker = rangeCalendar({ range, today, busy, onChange: () => { d.start = range.from; d.end = range.to; } });
   return h('form', { class: 'form-grid', onsubmit: async (e) => {
     e.preventDefault();
     err.textContent = '';
@@ -46,13 +50,7 @@ function emptyPane(anchor) {
     }
   } },
     h('label', { class: 'span2' }, 'Name', h('input', { required: true, placeholder: 'z.B. Japan', oninput: (e) => (d.name = e.target.value) })),
-    h('label', null, 'Von', h('input', { type: 'date', value: d.start, required: true, onchange: (e) => {
-      // Dauer beibehalten, wenn der Start verschoben wird
-      const len = isDate(d.start) && isDate(d.end) ? daysBetween(d.start, d.end) : 14;
-      d.start = e.target.value;
-      if (isDate(d.start) && d.start >= '2000-01-01') endInput.value = d.end = addDays(d.start, Math.max(0, len));
-    } })),
-    h('label', null, 'Bis', endInput),
+    h('div', { class: 'span2' }, picker),
     h('label', null, 'Währung vor Ort', curSelect(d.currency, (v) => (d.currency = v), state.data.knownCurrencies)),
     h('label', null, 'Personen', h('input', { type: 'number', min: 1, max: 50, value: d.travelers, onchange: (e) => (d.travelers = Number(e.target.value)) })),
     h('p', { class: 'hint span2' }, 'Das Jahr muss nicht in den Namen – die Reisedaten erscheinen überall neben dem Namen.'),

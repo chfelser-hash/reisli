@@ -3,6 +3,9 @@
 Neueste Version zuoberst. Format: `## Version – Datum`, darunter je eine Zeile pro Änderung.
 Die Version steht auch in `package.json` und unter «Mehr → Über Reisli».
 
+## 1.4.0 – 2026-10-31
+- Neue Reise: Von–Bis wie in Flux direkt im Kalender antippen (erster Tag, letzter Tag – ohne «OK»), mit Anzahl Tage und Nächte; Wochenenden blass, Tage bestehender Reisen mit Punkt markiert.
+
 ## 1.3.1 – 2026-10-29
 - Fehler behoben: Buchung importieren legte einen neuen Posten an, obwohl die Unterkunft schon geplant war (ohne Buchungsnummer). Jetzt wird eine Unterkunft in denselben Nächten erkannt und vorgeschlagen; über «Übernehmen in» lässt sich frei wählen: neuer Posten oder ein bestehender.
 - «Anzeigen» nach dem Import öffnet den übernommenen Posten direkt.

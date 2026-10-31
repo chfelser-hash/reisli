@@ -845,3 +845,26 @@ a.contact { color: var(--accent); }
 }
 .update-box:not(:empty) { margin: .6rem 0; display: flex; flex-direction: column; gap: .5rem; }
 .pos { color: var(--pos); }
+
+/* ---------- Von–Bis-Kalender (wie in Flux) ---------- */
+.rcal { margin: 0 0 .6rem; }
+.rcal-sel { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.rcal-chip { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; padding: .45rem .75rem; border-radius: 12px; border: 1px solid var(--line); background: var(--line-2); cursor: pointer; text-align: left; font: inherit; color: var(--ink); }
+.rcal-chip span { font-size: .78rem; font-weight: 600; color: var(--ink-3); }
+.rcal-chip strong { font-size: 1.05rem; }
+.rcal-chip.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--card); }
+.rcal-hint { margin: .45rem 0 .2rem; font-size: .85rem; color: var(--ink-3); }
+.rcal-nav { display: flex; align-items: center; justify-content: space-between; }
+.rcal-nav strong { font-size: 1.05rem; }
+.rcal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px 0; }
+.rcal-wd { text-align: center; font-size: .75rem; font-weight: 600; color: var(--ink-3); padding: .2rem 0; }
+.rcal-day { position: relative; height: 42px; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 600; font-size: .98rem; color: var(--ink); }
+.rcal-day.rcal-off { color: var(--ink-3); font-weight: 400; }
+.rcal-day.rcal-busy::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--warn); }
+.rcal-day.today { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.rcal-day.in { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rcal-day.start { border-radius: 999px 0 0 999px; }
+.rcal-day.end { border-radius: 0 999px 999px 0; }
+.rcal-day.start.end { border-radius: 999px; }
+.rcal-day.start, .rcal-day.end { background: var(--accent); color: var(--accent-ink); }
+.rcal-day:focus-visible { outline-offset: -2px; }

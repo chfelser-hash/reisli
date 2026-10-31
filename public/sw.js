@@ -10,7 +10,7 @@ const ASSETS = [
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
   '/js/app.js', '/js/calc.js', '/js/ui.js', '/js/idb.js', '/js/booking-parse.js',
   '/js/views/auswertung.js', '/js/views/dokumente.js', '/js/views/erfassen.js', '/js/views/heute.js', '/js/views/importbuchung.js', '/js/views/item.js', '/js/views/kasse.js', '/js/views/mehr.js',
-  '/js/views/newtrip.js', '/js/views/offen.js', '/js/views/packliste.js', '/js/views/plan.js', '/js/views/rechner.js', '/js/views/reise.js', '/js/views/shared.js', '/js/views/timeline.js',
+  '/js/views/newtrip.js', '/js/views/offen.js', '/js/views/packliste.js', '/js/views/plan.js', '/js/views/rangecal.js', '/js/views/rechner.js', '/js/views/reise.js', '/js/views/shared.js', '/js/views/timeline.js',
 ];
 
 self.addEventListener('install', (e) => {
